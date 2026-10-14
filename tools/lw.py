@@ -190,7 +190,10 @@ def entry(d):
     h = hashlib.sha256()
     for name in files:
         h.update(name.encode())
-        h.update((d / name).read_bytes())
+        data = (d / name).read_bytes()
+        if name == SHADER:
+            data = data.replace(b"\r\n", b"\n")  # same hash on Windows and in CI
+        h.update(data)
     e = {
         "id": d.name,
         "name": meta.get("name") or d.name.replace("-", " ").title(),
