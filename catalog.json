@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "wallpapers": [
+    {
+      "id": "aurora",
+      "name": "Aurora",
+      "author": "King Mathieu",
+      "description": "Northern lights ripple over the mountains and reflect in a still lake.",
+      "version": "3e52a16449fc",
+      "added": "2026-10-14",
+      "files": [
+        "scene.frag"
+      ],
+      "channels": [],
+      "fps": 30,
+      "thumbTime": 6
+    },
+    {
+      "id": "lava-lamp",
+      "name": "Lava Lamp",
+      "author": "King Mathieu",
+      "description": "Warm wax blobs that drift, merge and split.",
+      "version": "743450180200",
+      "added": "2026-10-14",
+      "files": [
+        "scene.frag"
+      ],
+      "channels": [],
+      "thumbTime": 8
+    },
+    {
+      "id": "neon-grid",
+      "name": "Neon Grid",
+      "author": "King Mathieu",
+      "description": "A retro synthwave horizon: striped sun, twinkling stars and an endless neon grid.",
+      "version": "76ea535bbd55",
+      "added": "2026-10-14",
+      "files": [
+        "scene.frag"
+      ],
+      "channels": [],
+      "thumbTime": 3
+    }
+  ]
+}

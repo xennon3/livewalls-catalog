@@ -1,0 +1,39 @@
+# Validates every shader and regenerates catalog.json whenever wallpapers change, so a wallpaper
+# added straight through github.com (drag-and-drop upload) also goes live in the app.
+name: catalog
+
+on:
+  push:
+    branches: [main]
+    paths: ["wallpapers/**", "tools/**", ".github/workflows/catalog.yml"]
+  pull_request:
+    paths: ["wallpapers/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install glslang
+        run: sudo apt-get update -q && sudo apt-get install -y -q glslang-tools
+      - name: Check shaders compile
+        run: python tools/lw.py check --glslang
+      - name: Build catalog.json
+        run: python tools/lw.py build
+      - name: Commit catalog
+        if: github.event_name != 'pull_request'
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A catalog.json wallpapers
+            git commit -m "Update catalog.json"
+            git push
+          fi
