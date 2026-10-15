@@ -6,18 +6,20 @@
       "name": "Golden Spire",
       "author": "Prux Tech",
       "description": "A lone figure on a rain-slick rooftop above a megacity at night: flying cars cross between the towers, lightning flickers in the clouds, the golden spire pulses with light and rain ripples across the roof.",
-      "version": "98d6a141bf3c",
+      "version": "d78a69ebd159",
       "added": "2026-10-15",
       "files": [
         "scene.frag",
         "art.jpg",
         "maps.png",
-        "cars_atlas.png"
+        "cars_atlas.png",
+        "cloth.png"
       ],
       "channels": [
         "art.jpg",
         "maps.png",
-        "cars_atlas.png"
+        "cars_atlas.png",
+        "cloth.png"
       ],
       "fps": 30,
       "scale": 0.7,
@@ -29,18 +31,20 @@
       "name": "Holo District",
       "author": "Prux Tech",
       "description": "A figure on a wet rooftop above a city of giant holograms: the holo screens flicker and glitch, the tower beam pulses, searchlights sweep the clouds and flying cars hover and stream past in the rain.",
-      "version": "5b01a7f5e090",
+      "version": "bb09f689e316",
       "added": "2026-10-15",
       "files": [
         "scene.frag",
         "art.jpg",
         "maps.png",
-        "cars_atlas.png"
+        "cars_atlas.png",
+        "cloth.png"
       ],
       "channels": [
         "art.jpg",
         "maps.png",
-        "cars_atlas.png"
+        "cars_atlas.png",
+        "cloth.png"
       ],
       "fps": 30,
       "scale": 0.7,
