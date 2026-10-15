@@ -39,7 +39,8 @@ wallpapers/<id>/        id = folder name: lowercase letters, digits, dashes (e.g
   - `name`, `author`, `description`: shown in the app. The existing wallpapers use
     `"author": "King Mathieu"`.
   - `fps`: frame-rate cap. Use 30 for slow scenes, or leave it out for 60.
-  - `scale`: render resolution, 0.25-1. Use it for heavy shaders.
+  - `scale`: render resolution, 0.25-1. Use it for heavy shaders. Safe to use: the app renders into an
+    offscreen buffer and upscales it (fixed 2026-10-14; earlier dev builds crashed on scale < 1).
   - `loop`: `iTime` wraps after this many seconds. Without it, `iTime` wraps at 3600 s.
   - `thumbTime`: the second of the animation the app captures as the thumbnail. Pick a moment
     that looks good.
@@ -92,6 +93,22 @@ python tools/lw.py publish                      # check + build catalog.json + c
 4. **Performance:** this is a mid-range phone (Moto G Stylus 5G) running all day as a wallpaper.
    - Keep loops small: about 4-6 fbm octaves and no 100-step raymarches at full resolution.
    - Use `scale` or `fps: 30` for heavy scenes.
+   - **Measure, don't guess.** The in-app preview ignores `fps`, so its frame rate is what the
+     GPU can sustain. Open the preview with `lw.py test <id>`, find the layer with
+     `adb shell dumpsys SurfaceFlinger --list` (the `SurfaceView[com.pulsa.livewalls/...](BLAST)#N`
+     line), then:
+     - run `dumpsys SurfaceFlinger --latency-clear '<layer>'`;
+     - wait 4 s and run `dumpsys SurfaceFlinger --latency '<layer>'`;
+     - count the frames.
+   - Aim for at least 1.5× the `fps` cap, so the GPU sits around 65% busy or less. Measured
+     values on 2026-10-14:
+
+     | Wallpaper | Settings | Measured |
+     |---|---|---|
+     | neon-alley | scale 0.45, fps 24 | 36 fps |
+     | megacity | scale 0.5, fps 20 | 46 fps |
+     | hover-run | scale 0.75, fps 30 | 48 fps |
+     | lava-lamp | full resolution | 60 fps |
    - Use `highp`-safe math. `sin`-hash noise breaks at large `iTime`, so wrap time with `loop`
      or `mod`.
 5. **Aspect ratio:** phones are portrait, about 1080×2400. Design for tall screens, and use
