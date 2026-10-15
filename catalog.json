@@ -2,6 +2,29 @@
   "schema": 1,
   "wallpapers": [
     {
+      "id": "golden-spire",
+      "name": "Golden Spire",
+      "author": "Prux Tech",
+      "description": "A lone figure on a rain-slick rooftop above a megacity at night: flying cars cross between the towers, lightning flickers in the clouds, the golden spire pulses with light and rain ripples across the roof.",
+      "version": "e999eed62b38",
+      "added": "2026-10-15",
+      "files": [
+        "scene.frag",
+        "art.jpg",
+        "maps.png",
+        "cars_atlas.png"
+      ],
+      "channels": [
+        "art.jpg",
+        "maps.png",
+        "cars_atlas.png"
+      ],
+      "fps": 30,
+      "scale": 0.7,
+      "loop": 600,
+      "thumbTime": 4
+    },
+    {
       "id": "rainglass",
       "name": "Rainglass",
       "author": "Prux Tech",
