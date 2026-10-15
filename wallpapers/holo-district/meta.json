@@ -5,7 +5,8 @@
   "channels": [
     "art.jpg",
     "maps.png",
-    "cars_atlas.png"
+    "cars_atlas.png",
+    "cloth.png"
   ],
   "fps": 30,
   "scale": 0.7,

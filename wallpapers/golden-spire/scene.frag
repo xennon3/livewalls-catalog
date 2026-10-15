@@ -2,11 +2,11 @@
 //
 // The painting is iChannel0 (art.jpg), with its small flying cars painted out. They live in
 // iChannel2 (cars_atlas.png) as cut-out sprites and fly their lanes across the city.
-// iChannel1 (maps.png) holds hand-made masks for the painting:
+// iChannel3 (cloth.png) marks the coat's loose tail, which flaps in the wind.
+// iChannel1 (maps.png, RGB only) holds hand-made masks for the painting:
 //   R  depth: 0 = far city, 1 = rooftop and figure (drives the parallax, hides cars behind things)
 //   G  the big hover car (it bobs in place: it runs off the painting's edge, so it can't travel)
 //   B  wet rooftop (splashes and moving highlights)
-//   A  the coat's loose tail (it flaps in the wind)
 // On top: drifting fog, rain, lightning in the clouds, a breathing glow on the spire, twinkling
 // windows, flickering lanterns, more air traffic, clouds crossing the moon.
 
@@ -61,6 +61,13 @@ vec3 art(vec2 q) {
 vec4 maps(vec2 q) {
     q = clamp(q, vec2(0.001), vec2(0.999));
     return texture(iChannel1, vec2(q.x, mix(1.0 - q.y, q.y, FLIP)));
+}
+
+// Android premultiplies image alpha, so masks never live in an alpha channel: maps.png is RGB
+// and the coat's mask is a greyscale image of its own.
+float cloth(vec2 q) {
+    q = clamp(q, vec2(0.001), vec2(0.999));
+    return texture(iChannel3, vec2(q.x, mix(1.0 - q.y, q.y, FLIP))).r;
 }
 
 float lum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
@@ -118,8 +125,8 @@ vec4 cars(vec2 qpx, float t, inout vec3 glowAdd) {
         vec2 au = (CAR_ATL[i] + local) / ATLAS_PX;
         vec4 sp = texture(iChannel2, vec2(au.x, mix(1.0 - au.y, au.y, FLIP)));
         float a = sp.a * fade;
-        acc.rgb = mix(acc.rgb, sp.rgb, a);
-        acc.a = max(acc.a, a);
+        acc.rgb = acc.rgb * (1.0 - a) + sp.rgb * fade;   // sp is premultiplied
+        acc.a = a + acc.a * (1.0 - a);
     }
     return acc;
 }
@@ -145,9 +152,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
     vec4 m = maps(q);
     // the coat's tail snaps in the wind; the hovering cars bob
+    float cl = cloth(q);
     float gust = 0.6 + 0.4 * sin(t * 0.37);
-    q.x += m.a * gust * (0.010 * sin(t * 2.1 + q.y * 42.0) + 0.005 * sin(t * 3.7 + q.y * 95.0));
-    q.y += m.a * gust * 0.004 * sin(t * 2.7 + q.x * 30.0);
+    q.x += cl * gust * (0.010 * sin(t * 2.1 + q.y * 42.0) + 0.005 * sin(t * 3.7 + q.y * 95.0));
+    q.y += cl * gust * 0.004 * sin(t * 2.7 + q.x * 30.0);
     float bob = sin(t * 1.2) * 0.006 + sin(t * 2.9) * 0.0015;
     q.y += m.g * bob;
     q.x += m.g * 0.004 * sin(t * 0.5);
@@ -182,7 +190,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec3 trailGlow = vec3(0.0);
     vec4 cr = cars(q * IMG_PX, t, trailGlow);
     float behind = 1.0 - smoothstep(0.42, 0.55, m.r);
-    col = mix(col, cr.rgb * 1.08, cr.a * behind);
+    col = col * (1.0 - cr.a * behind) + cr.rgb * 1.08 * behind;
     col += trailGlow * behind;
     // the big hover car's lights pulse as it idles
     vec2 hl = q - vec2(0.30, 0.326 + bob);

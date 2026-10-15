@@ -4,7 +4,8 @@
 //
 // iChannel0  art.jpg         the painting, with the small flying cars painted out
 // iChannel1  maps.png        R depth (parallax, hides cars behind near things), G holo screens,
-//                            B wet rooftop, A the coat's loose tail
+//                            B wet rooftop (RGB only)
+// iChannel3  cloth.png       the coat's loose tail
 // iChannel2  cars_atlas.png  the cars, cut out of the painting
 
 // The app uploads images bottom row first (GL convention), so the painting's top is at v = 1.
@@ -57,6 +58,13 @@ vec3 art(vec2 q) {
 vec4 maps(vec2 q) {
     q = clamp(q, vec2(0.001), vec2(0.999));
     return texture(iChannel1, vec2(q.x, mix(1.0 - q.y, q.y, FLIP)));
+}
+
+// Android premultiplies image alpha, so masks never live in an alpha channel: maps.png is RGB
+// and the coat's mask is a greyscale image of its own.
+float cloth(vec2 q) {
+    q = clamp(q, vec2(0.001), vec2(0.999));
+    return texture(iChannel3, vec2(q.x, mix(1.0 - q.y, q.y, FLIP))).r;
 }
 
 float lum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
@@ -135,8 +143,8 @@ vec4 cars(vec2 qpx, float t, inout vec3 glowAdd) {
         vec2 au = (SPR_ATL[s] + l2) / ATLAS_PX;
         vec4 sp = texture(iChannel2, vec2(au.x, mix(1.0 - au.y, au.y, FLIP)));
         float al = sp.a * fade;
-        acc.rgb = mix(acc.rgb, sp.rgb, al);
-        acc.a = max(acc.a, al);
+        acc.rgb = acc.rgb * (1.0 - al) + sp.rgb * fade;   // sp is premultiplied
+        acc.a = al + acc.a * (1.0 - al);
     }
     return acc;
 }
@@ -162,9 +170,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float far = 1.0 - smoothstep(0.25, 0.45, m.r);
 
     // the coat's tail snaps in the wind
+    float cl = cloth(q);
     float gust = 0.6 + 0.4 * sin(t * 0.37);
-    q.x += m.a * gust * (0.011 * sin(t * 2.1 + q.y * 42.0) + 0.005 * sin(t * 3.7 + q.y * 95.0));
-    q.y += m.a * gust * 0.004 * sin(t * 2.7 + q.x * 30.0);
+    q.x += cl * gust * (0.011 * sin(t * 2.1 + q.y * 42.0) + 0.005 * sin(t * 3.7 + q.y * 95.0));
+    q.y += cl * gust * 0.004 * sin(t * 2.7 + q.x * 30.0);
 
     // the big car at the lower right hovers in place (it runs off the painting's edge)
     vec2 bc = (q * IMG_PX - vec2(800.0, 1150.0)) / vec2(170.0, 85.0);
@@ -229,7 +238,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec3 trailGlow = vec3(0.0);
     vec4 cr = cars(q * IMG_PX, t, trailGlow);
     float behind = 1.0 - smoothstep(0.42, 0.55, m.r);
-    col = mix(col, cr.rgb * 1.06, cr.a * behind);
+    col = col * (1.0 - cr.a * behind) + cr.rgb * 1.06 * behind;
     col += trailGlow * behind;
     // the big car's tail lights and exhaust pulse
     vec2 tl = (q * IMG_PX - vec2(890.0, 1185.0)) * vec2(0.6, 1.4);
