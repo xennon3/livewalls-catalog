@@ -4,8 +4,8 @@
   LiveWalls Control Room. Source of the dashboard published at the URL in CLAUDE.md; republish it
   with the Artifact tool (same url) after editing. Data lives in the artifact's database:
     wallpapers/<id>  one doc per wallpaper, written by agents from `python tools/lw.py export`
-    requests/<id>    Publish / Retire presses, carried out by Claude Code sessions (CLAUDE.md)
-  Capabilities: db, user, mcp (Claude Code Remote: create_session, get_session).
+  Publish = merge the wallpaper's PR on GitHub; Retire = run the "Retire wallpaper" Action.
+  Capabilities: db, user.
 -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400&display=swap">
 <style>
@@ -52,7 +52,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--pink); outline-
 .checks .y::before { content: "✓"; color: var(--ok); }
 .checks .n::before { content: "!"; color: var(--warn); }
 .checks .x::before { content: "✕"; color: var(--bad); }
-.btn { font: inherit; font-size: .85rem; font-weight: 500; border-radius: 999px; padding: 7px 14px; cursor: pointer; border: 1px solid var(--line); background: none; color: var(--fg); }
+.btn { text-decoration: none; display: inline-block; font: inherit; font-size: .85rem; font-weight: 500; border-radius: 999px; padding: 7px 14px; cursor: pointer; border: 1px solid var(--line); background: none; color: var(--fg); }
 .btn.go { background: var(--pink); border-color: var(--pink); color: #1a0716; }
 .btn.danger { border-color: var(--bad); color: var(--bad); }
 .btn.danger.solid { background: var(--bad); color: #1a0709; }
@@ -98,13 +98,12 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--pink); outline-
   <div class="kpis">
     <div class="kpi"><b id="k-live">–</b><span>Live in the app</span></div>
     <div class="kpi" id="k-pending-box"><b id="k-pending">–</b><span>Waiting to publish</span></div>
-    <div class="kpi"><b id="k-queue">–</b><span>Requests in progress</span></div>
     <div class="kpi"><b id="k-retired">–</b><span>Retired</span></div>
   </div>
 
   <div class="tabs" role="tablist" aria-label="Sections">
     <button class="tab" role="tab" id="tab-gallery" data-page="gallery" aria-selected="true">Gallery</button>
-    <button class="tab" role="tab" id="tab-queue" data-page="queue" aria-selected="false">Publish queue<span class="count" id="queue-count"></span></button>
+    <button class="tab" role="tab" id="tab-queue" data-page="queue" aria-selected="false">How publishing works</button>
     <button class="tab" role="tab" id="tab-audience" data-page="audience" aria-selected="false">Audience</button>
   </div>
 
@@ -138,11 +137,12 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--pink); outline-
   </section>
 
   <section id="queue" role="tabpanel" aria-labelledby="tab-queue" hidden>
-    <div class="box">
-      <h2>How a button press goes live</h2>
-      <p class="note">Publish and Retire start a Claude Code session on your account. It takes the wallpaper from this dashboard, checks it compiles, pushes to main and marks the request done here. The app picks it up within minutes. If the session can't start from here, the request waits until the next Claude Code session on the catalog repo, which carries it out first.</p>
+    <div class="cols">
+      <div class="box"><h2>Publish = merge</h2><span class="tag">GitHub, no Claude needed</span>
+        <ul><li>Each new or edited wallpaper arrives as a pull request</li><li>A green check means its shader compiles</li><li>Merge it and it's live in the app within minutes</li><li>Close it instead to reject it</li></ul></div>
+      <div class="box"><h2>Retire = run the action</h2><span class="tag">GitHub, no Claude needed</span>
+        <ul><li>Opens the "Retire wallpaper" action</li><li>Tap Run workflow and type the wallpaper id shown under its name</li><li>It leaves the app's gallery on the next sync</li><li>People who applied it keep it until they switch away</li></ul></div>
     </div>
-    <div class="queue" id="requests"><div class="empty">No requests yet.</div></div>
   </section>
 
   <section id="audience" role="tabpanel" aria-labelledby="tab-audience" hidden>
@@ -163,10 +163,9 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--pink); outline-
 
 <script>
 // ------------------------------------------------------------------ settings
-const DASHBOARD_URL = 'https://claude.ai/artifact/EEv1GKcprRAgLxaYDdyrYM';
-const REPO_URL = 'https://github.com/xennon3/livewalls-catalog';
-const ENVIRONMENT_ID = 'env_01UNBNFcjBKcedMXkrVbBnZi';
-const CCR = 'Claude Code Remote';
+const REPO = 'https://github.com/xennon3/livewalls-catalog';
+const RETIRE_URL = REPO + '/actions/workflows/retire.yml';
+const PULLS_URL = REPO + '/pulls';
 
 // ------------------------------------------------------------------ renderer (same header as the app)
 const HEADER = `#version 300 es
@@ -251,14 +250,11 @@ const GL = (() => {
 })();
 
 // ------------------------------------------------------------------ state
-const S = { walls: [], reqs: [], show: 'all', selected: null, confirm: null, canEdit: false, busy: false, page: 'gallery', db: null, user: null, flash: '' };
-const LABEL = { live: 'Live', pending: 'Pending', changed: 'Edited', retired: 'Retired', requested: 'Queued', working: 'Working', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
-const OPEN = ['requested', 'working'];
+const S = { walls: [], show: 'all', selected: null, page: 'gallery', db: null };
+const LABEL = { live: 'Live', pending: 'Pending', changed: 'Edited', retired: 'Retired' };
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const isNew = (w) => w.status === 'live' && w.added && Date.now() < Date.parse(w.added) + 14 * 86400000;
-const openReq = (id) => S.reqs.find((r) => r.wallpaper === id && OPEN.includes(r.status));
-const fmtWhen = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); };
 
 // ------------------------------------------------------------------ tabs
 function showPage(page) {
@@ -282,16 +278,13 @@ function renderHeader() {
   const live = w.filter((x) => x.status === 'live' || x.status === 'changed').length;
   const waiting = w.filter((x) => x.status === 'pending' || x.status === 'changed');
   const retired = w.filter((x) => x.status === 'retired').length;
-  const inQueue = S.reqs.filter((r) => OPEN.includes(r.status)).length;
   $('k-live').textContent = live;
   $('k-pending').textContent = waiting.length;
   $('k-pending-box').classList.toggle('hot', waiting.length > 0);
-  $('k-queue').textContent = inQueue;
   $('k-retired').textContent = retired;
-  $('queue-count').textContent = inQueue ? String(inQueue) : '';
   if (!w.length) { $('takeaway').textContent = S.db ? 'No wallpapers here yet. A Claude session adds them with lw.py export.' : 'Loading the catalog…'; return; }
   $('takeaway').textContent = waiting.length
-    ? `${waiting.map((x) => x.name).join(', ')} ${waiting.length === 1 ? 'is' : 'are'} waiting for your decision. Preview, then publish or leave it.`
+    ? `${waiting.map((x) => x.name).join(', ')} ${waiting.length === 1 ? 'is' : 'are'} waiting for your decision. Preview, then merge its pull request to publish.`
     : `All ${live} wallpapers are live. Nothing is waiting to publish.`;
 }
 
@@ -314,8 +307,6 @@ function thumbFor(w) {
   return thumbs.get(key);
 }
 function statusPill(w) {
-  const r = openReq(w.id);
-  if (r) return ['requested', (r.action === 'retire' ? 'Retiring' : 'Publishing')];
   if (isNew(w)) return ['new', 'New'];
   return [w.status, LABEL[w.status] || w.status];
 }
@@ -377,7 +368,7 @@ function renderStage(now, force) {
 (function tick(now) { requestAnimationFrame(tick); if (playing) renderStage(now, false); })(performance.now());
 
 function select(id) {
-  if (S.selected !== id) { S.confirm = null; t0 = performance.now(); pausedAt = 0; frame = 0; }
+  if (S.selected !== id) { t0 = performance.now(); pausedAt = 0; frame = 0; }
   S.selected = id;
   renderViewer();
   renderCards();
@@ -392,6 +383,7 @@ function renderViewer() {
   const [cls, txt] = statusPill(w);
   const pill = $('v-pill'); pill.hidden = false; pill.className = 'pill ' + cls; pill.textContent = txt;
   const specs = [(Number(w.fps) || 60) + ' fps cap', 'scale ' + (Number(w.scale) || 1), 'loop ' + (Number(w.loop) || 3600) + 's', 'thumb @' + (Number(w.thumbTime) || 0) + 's'];
+  specs.push('id ' + w.id);
   if (w.added) specs.push('added ' + w.added);
   $('v-specs').replaceChildren(...specs.map((s) => el('span', '', s)));
   $('v-desc').textContent = w.description || '';
@@ -406,151 +398,28 @@ function renderViewer() {
   renderActions(w);
 }
 
+function linkBtn(cls, text, href) {
+  const a = el('a', cls, text);
+  a.href = href; a.target = '_blank'; a.rel = 'noopener';
+  return a;
+}
+
 function renderActions(w) {
   const box = $('v-actions');
-  const r = openReq(w.id);
   const parts = [];
-  if (S.flash) parts.push(el('p', 'note', S.flash));
-  if (r) {
-    parts.push(el('p', 'note', `${r.action === 'retire' ? 'Retire' : 'Publish'} requested ${fmtWhen(r.requestedAt)}: ${LABEL[r.status]}. See the publish queue.`));
-  } else if (!S.canEdit) {
-    parts.push(el('p', 'note', 'Only editors of this dashboard can publish or retire.'));
-  } else if (S.confirm) {
-    const c = el('div', 'confirm');
-    const retire = S.confirm === 'retire';
-    const warn = [];
-    if (!retire && w.compiles === 'no') warn.push('It does not compile, so the app will show an error.');
-    if (!retire && !w.measuredFps) warn.push('It has not been measured on the phone yet.');
-    c.append(el('div', '', retire
-      ? `Retire ${w.name}? It leaves the app's gallery on the next sync. People who applied it keep it until they switch away.`
-      : `Publish ${w.name}? It goes live to every LiveWalls user within minutes.`));
-    if (warn.length) c.append(el('div', 'note', warn.join(' ')));
-    const row = el('div', 'row');
-    const yes = el('button', retire ? 'btn danger solid' : 'btn go', retire ? 'Yes, retire it' : 'Yes, publish it');
-    yes.type = 'button'; yes.disabled = S.busy;
-    yes.addEventListener('click', () => request(w, S.confirm));
-    const no = el('button', 'btn', 'Cancel'); no.type = 'button';
-    no.addEventListener('click', () => { S.confirm = null; renderViewer(); });
-    row.append(yes, no); c.append(row); parts.push(c);
-  } else {
-    const row = el('div', 'row');
-    if (w.status === 'pending' || w.status === 'changed' || w.status === 'retired') {
-      const b = el('button', 'btn go', w.status === 'changed' ? 'Publish changes' : w.status === 'retired' ? 'Publish again' : 'Publish to app');
-      b.type = 'button'; b.addEventListener('click', () => { S.confirm = 'publish'; S.flash = ''; renderViewer(); });
-      row.append(b);
-    }
-    if (w.status === 'live' || w.status === 'changed') {
-      const b = el('button', 'btn danger', 'Retire');
-      b.type = 'button'; b.addEventListener('click', () => { S.confirm = 'retire'; S.flash = ''; renderViewer(); });
-      row.append(b);
-    }
-    parts.push(row);
+  const row = el('div', 'row');
+  if (w.status === 'pending' || w.status === 'changed' || w.status === 'retired') {
+    row.append(linkBtn('btn go', w.prUrl ? 'Review & merge to publish' : 'Find its pull request', w.prUrl || PULLS_URL));
+    parts.push(el('p', 'note', w.prUrl
+      ? 'Merging the pull request publishes it to every LiveWalls user within minutes.'
+      : 'No pull request is linked yet. Ask Claude to open one, or look in the open pull requests.'));
   }
+  if (w.status === 'live' || w.status === 'changed') {
+    row.append(linkBtn('btn danger', 'Retire', RETIRE_URL));
+    parts.push(el('p', 'note', `To retire it, tap Run workflow and enter ${w.id}.`));
+  }
+  parts.unshift(row);
   box.replaceChildren(...parts);
-}
-
-// ------------------------------------------------------------------ requests
-function sessionPrompt(w, action, reqId) {
-  return [
-    `Control Room request ${reqId}: the owner pressed "${action === 'retire' ? 'Retire' : 'Publish'}" for wallpaper \`${w.id}\` (${w.name}) in the LiveWalls Control Room dashboard (${DASHBOARD_URL}).`,
-    `That press is their approval to push this one change to main of xennon3/livewalls-catalog.`,
-    `Follow the "Control Room requests" section of CLAUDE.md for request ${reqId} only, update the request and the dashboard as it says, then stop.`,
-  ].join('\n');
-}
-
-function sessionIdFrom(res) {
-  const text = JSON.stringify(res && (res.payload ?? res.structuredContent ?? res.content) || '');
-  const m = text.match(/session_[A-Za-z0-9]+/);
-  return m ? m[0] : null;
-}
-
-async function startSession(w, action, reqId) {
-  const mcp = await claude.use('mcp');
-  if (!mcp) return { error: 'Claude Code isn’t reachable from this view, so the request waits for your next Claude Code session on the catalog repo.' };
-  try {
-    const res = await mcp.callTool(CCR, 'create_session', {
-      environment_id: ENVIRONMENT_ID,
-      source_url: REPO_URL,
-      outcome_branch: 'main',
-      title: `${action === 'retire' ? 'Retire' : 'Publish'} ${w.name} (Control Room)`,
-      prompt: sessionPrompt(w, action, reqId),
-    }, { cache: false });
-    return { sessionId: sessionIdFrom(res) };
-  } catch (e) {
-    const why = e && e.code === 'not_granted' ? 'Claude Code access wasn’t allowed for this page'
-      : e && e.code === 'server_not_connected' ? 'Claude Code isn’t connected on this account'
-      : (e && e.message) || 'the session could not start';
-    return { error: `${why}. The request waits for your next Claude Code session on the catalog repo.` };
-  }
-}
-
-async function request(w, action) {
-  if (S.busy || !S.db) return;
-  S.busy = true; renderViewer();
-  const reqId = `${Date.now()}-${action}-${w.id}`;
-  const doc = S.db.collection('requests').doc(reqId);
-  try {
-    await doc.set({ wallpaper: w.id, name: w.name, action, version: w.version || '', status: 'requested', requestedAt: new Date().toISOString(), requestedBy: S.user ? await S.user.id() : '', sessionId: '', note: '' });
-  } catch (e) {
-    S.busy = false; S.flash = 'Couldn’t save the request: ' + ((e && e.message) || 'unknown error'); renderViewer(); return;
-  }
-  S.confirm = null;
-  const out = await startSession(w, action, reqId);
-  try {
-    if (out.sessionId) await doc.update({ status: 'working', sessionId: out.sessionId, note: 'Claude Code session started.' });
-    else await doc.update({ note: out.error || 'Session started; its id was not returned.' });
-  } catch (e) { /* the snapshot shows whatever was saved */ }
-  S.flash = out.sessionId ? 'Started a Claude Code session. Follow it in the publish queue.' : out.error;
-  S.busy = false;
-  renderViewer();
-}
-
-async function cancelReq(r) {
-  try { await S.db.collection('requests').doc(r.id).update({ status: 'cancelled', note: 'Cancelled from the dashboard.' }); } catch (e) { /* stays as is */ }
-}
-
-async function checkSession(r, btn) {
-  const mcp = await claude.use('mcp');
-  if (!mcp || !r.sessionId) return;
-  btn.disabled = true; btn.textContent = 'Checking…';
-  try {
-    const res = await mcp.callTool(CCR, 'get_session', { session_id: r.sessionId }, { cache: false });
-    const text = JSON.stringify(res.payload ?? res.structuredContent ?? res.content ?? '');
-    const m = text.match(/SESSION_STATUS_BUCKET_([A-Z_]+)/) || text.match(/"status_bucket"\s*:\s*"([a-z_]+)"/i);
-    btn.textContent = m ? 'Session: ' + m[1].toLowerCase().replace(/_/g, ' ') : 'Session found';
-  } catch (e) {
-    btn.textContent = 'Couldn’t check';
-  }
-  btn.disabled = false;
-}
-
-function renderQueue() {
-  const box = $('requests');
-  if (!S.reqs.length) { box.replaceChildren(el('div', 'empty', 'No requests yet. Publish or Retire a wallpaper from the gallery.')); return; }
-  box.replaceChildren(...S.reqs.map((r) => {
-    const card = el('div', 'req');
-    card.append(el('div', 'what', `${r.action === 'retire' ? 'Retire' : 'Publish'} ${r.name || r.wallpaper}`), el('span', 'pill ' + r.status, LABEL[r.status] || r.status));
-    card.append(el('div', 'when', 'Requested ' + fmtWhen(r.requestedAt) + (r.finishedAt ? ' · finished ' + fmtWhen(r.finishedAt) : '')));
-    if (r.note) card.append(el('div', 'msg', r.note));
-    const row = el('div', 'row');
-    if (r.sessionId) {
-      const a = el('a', '', 'Open the Claude Code session');
-      a.href = 'https://claude.ai/code/' + encodeURIComponent(r.sessionId); a.target = '_blank'; a.rel = 'noopener';
-      row.append(a);
-      if (OPEN.includes(r.status)) {
-        const b = el('button', 'btn', 'Check status'); b.type = 'button';
-        b.addEventListener('click', () => checkSession(r, b));
-        row.append(b);
-      }
-    }
-    if (S.canEdit && r.status === 'requested') {
-      const c = el('button', 'btn', 'Cancel request'); c.type = 'button';
-      c.addEventListener('click', () => cancelReq(r));
-      row.append(c);
-    }
-    if (row.childNodes.length) card.append(row);
-    return card;
-  }));
 }
 
 function renderAll() {
@@ -559,23 +428,16 @@ function renderAll() {
     const first = S.walls.find((w) => w.status === 'pending' || w.status === 'changed') || S.walls.find((w) => w.status === 'live');
     if (first) { select(first.id); } else renderCards();
   } else { renderViewer(); renderCards(); }
-  renderQueue();
 }
 
 // ------------------------------------------------------------------ data
 (async () => {
-  const [db, user] = await Promise.all([claude.use('db'), claude.use('user')]);
-  S.user = user;
-  S.canEdit = user ? (user.can('data.write') ?? user.canEdit()) !== false : false;
+  const db = await claude.use('db');
   if (!db) { $('takeaway').textContent = 'Sign in to claude.ai to see the catalog.'; $('cards').replaceChildren(el('div', 'empty', 'The catalog loads once you are signed in.')); return; }
   S.db = db;
   db.collection('wallpapers').onSnapshot((snap) => {
     S.walls = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderAll();
   }, () => { $('takeaway').textContent = 'Couldn’t load the catalog. Reload the page to try again.'; });
-  db.collection('requests').orderBy('requestedAt', 'desc').limit(50).onSnapshot((snap) => {
-    S.reqs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    renderAll();
-  }, () => { $('requests').replaceChildren(el('div', 'empty', 'Couldn’t load the queue.')); });
 })();
 </script>

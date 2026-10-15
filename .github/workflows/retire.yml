@@ -1,0 +1,53 @@
+# Retire a wallpaper: deletes wallpapers/<id> on main and rebuilds catalog.json, so it leaves the
+# app's gallery on the next sync. Run it from the Actions tab ("Retire wallpaper" -> Run workflow),
+# the GitHub mobile app, or the API (POST .../actions/workflows/retire.yml/dispatches with
+# {"ref":"main","inputs":{"id":"<id>"}}). Only people with write access to the repo can run it.
+name: Retire wallpaper
+
+on:
+  workflow_dispatch:
+    inputs:
+      id:
+        description: "Wallpaper id (its folder name, e.g. neon-grid)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: catalog-main
+  cancel-in-progress: false
+
+jobs:
+  retire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Remove the folder
+        env:
+          ID: ${{ inputs.id }}
+        run: |
+          if ! [[ "$ID" =~ ^[a-z0-9][a-z0-9-]{0,63}$ ]]; then
+            echo "::error::'$ID' is not a wallpaper id"; exit 1
+          fi
+          if [ ! -d "wallpapers/$ID" ]; then
+            echo "::error::wallpapers/$ID does not exist on main"; exit 1
+          fi
+          git rm -r -q "wallpapers/$ID"
+      - name: Build catalog.json
+        run: python tools/lw.py build
+      - name: Commit and push
+        env:
+          ID: ${{ inputs.id }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A catalog.json wallpapers
+          git commit -m "Retire $ID"
+          git push

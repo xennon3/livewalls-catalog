@@ -15,10 +15,9 @@ pieces fit together and the rules to follow.
 - **Adding a wallpaper:** one folder in `wallpapers/`, pushed to `main`, shows up in every
   user's app. **New wallpapers never need an app update or a Play release.**
 - Anything pushed here reaches real users within minutes. Treat a push as publishing.
-- **Control Room:** https://claude.ai/artifact/EEv1GKcprRAgLxaYDdyrYM is the owner's dashboard. It
-  previews every wallpaper live, and its Publish and Retire buttons are how the owner decides what
-  goes live. Every new or changed wallpaper goes there before it can be pushed. See
-  [Control Room](#control-room) below.
+- **Publishing is the owner's button, not yours.** New or changed wallpapers arrive as pull
+  requests. The owner publishes by merging one, and retires a wallpaper with the "Retire wallpaper"
+  GitHub Action. See [Publishing and retiring](#publishing-and-retiring) below.
 
 ## A wallpaper
 
@@ -70,8 +69,14 @@ python tools/lw.py import .dashboard/x.json     # recreate a folder from a Contr
 python tools/lw.py publish                      # check + build catalog.json + commit + push = LIVE
 ```
 
-The normal path for a new wallpaper is: write it, run `check --glslang`, **add it to the Control
-Room** (see below), give the owner the link, and stop. The owner publishes it with the button.
+The normal path for a new wallpaper is:
+
+1. Write it and run `check --glslang`.
+2. Open a pull request for it (see below).
+3. Add it to the Control Room with the PR link.
+4. Give the owner both links and stop.
+
+The owner publishes it by merging the PR.
 
 - **`test`:** copies the folder to the phone's `Android/data/com.pulsa.livewalls/files/dev/<id>/`.
   The wallpaper then appears in the app under "Testing on this phone", with id `dev:<id>`. This
@@ -92,12 +97,10 @@ Room** (see below), give the owner the link, and stop. The owner publishes it wi
 
 ## Rules
 
-1. **Never push a wallpaper to `main` unless the owner approved that exact wallpaper.** Approval
-   is either a Control Room request you were asked to carry out (see below), or the owner saying
-   so in chat after seeing it in the Control Room. A push to `main` goes live to every user right
-   away. Every new or changed wallpaper must be in the Control Room before any push, so the owner
-   can see what they are approving. Pushes that touch no wallpaper (docs, `tools/`) still need the
-   owner's OK in chat.
+1. **Never push to `main` yourself, and never merge a PR.** A push to `main` goes live to every
+   user right away. Deliver wallpapers as pull requests, and the owner merges them. Every new or
+   changed wallpaper must also be in the Control Room with its PR link, so the owner can preview it
+   from their phone before deciding.
 2. **Licensing:** only publish shaders written in this session, or ones the user owns or has
    permission for. Don't copy shaders from shadertoy.com: they default to CC BY-NC-SA, which a
    commercial app can't use.
@@ -160,12 +163,32 @@ The local catalog server for debug builds is described in `LiveWalls/app/src/deb
 `python -m http.server 8765`, `adb reverse tcp:8765 tcp:8765`, then build the debug app with
 `-Plivewalls.catalogBaseUrl=http://localhost:8765/`. This is rarely needed now that `lw.py test` exists.
 
+## Publishing and retiring
+
+The owner decides what goes live with two buttons on GitHub. Neither needs Claude, and both work
+from the GitHub mobile app or the owner's own tools through the GitHub API.
+
+- **Publish = merge a pull request.**
+  - Put each new or changed wallpaper on its own branch, `wallpaper/<id>` (or the session's
+    designated branch), and open a PR to `main` titled `Publish <Name>`.
+  - On a PR, the catalog Action compiles every shader, so a red check means "don't merge".
+  - When the owner merges, the push to `main` makes the Action rebuild `catalog.json` and stamp
+    `added`, and the wallpaper is live within minutes.
+  - Keep one wallpaper per PR, and keep tool or doc changes out of wallpaper PRs.
+- **Retire = run the "Retire wallpaper" Action** (`.github/workflows/retire.yml`) with the wallpaper
+  id. It deletes the folder on `main` and rebuilds `catalog.json`.
+  - From the API: `POST /repos/xennon3/livewalls-catalog/actions/workflows/retire.yml/dispatches`
+    with `{"ref":"main","inputs":{"id":"<id>"}}`.
+  - Only accounts with write access can run it.
+  - To bring a wallpaper back, open a PR that re-adds the folder (`lw.py import` from its Control
+    Room document recreates it).
+
 ## Control Room
 
-The owner often works from their phone and can't run `lw.py test`, so the Control Room is where they
-look at wallpapers and decide. Link: https://claude.ai/artifact/EEv1GKcprRAgLxaYDdyrYM. It is a
-claude.ai artifact; read and write its data with the `ArtifactData` tool (load it with ToolSearch)
-and the artifact's `url`.
+A preview dashboard for the owner's phone, where `lw.py test` isn't available:
+https://claude.ai/artifact/EEv1GKcprRAgLxaYDdyrYM. It is a claude.ai artifact. Read and write its data
+with the `ArtifactData` tool (load it with ToolSearch) and the artifact's `url`. Its buttons only
+link out: "Review & merge" opens the wallpaper's PR, and "Retire" opens the Retire Action.
 
 - **Page source:** `tools/dashboard/index.html`. After editing it, republish with the Artifact tool,
   passing `url` (the link above) so the link stays the same, and omit `capabilities` to keep them.
@@ -176,46 +199,11 @@ and the artifact's `url`.
   catalog hash), `compiles`, and `files` (the text of `scene.frag` and `meta.json`).
   - A new wallpaper: `ArtifactData` `set` with `file_path: .dashboard/<id>.json`.
   - An existing one: `update` with the same file, so fields it doesn't hold survive.
+  - After opening its PR: `update` with `prUrl`.
   - Phone measurements: `update` with `measuredFps` (number) and `measuredOn` (date).
   - Run `export` where glslangValidator is installed (`sudo apt-get install -y glslang-tools`), or
     `compiles` reads `unchecked`.
-  - Textures can't travel in the document. If a wallpaper has images, upload them as artifact
-    assets and say so to the owner. The button flow below only handles shader-only wallpapers.
-- **`requests/<id>`:** written by the page when the owner presses Publish or Retire. Fields:
-  `wallpaper`, `action` (`publish`/`retire`), `version` (what the owner saw), `status`
-  (`requested` → `working` → `done`/`failed`, or `cancelled`), `sessionId`, `note`, `requestedAt`,
-  `finishedAt`. A press also starts a Claude Code session on this repo with `main` as its branch and
-  a prompt naming the request.
-- **At the start of any session in this repo,** list `requests` whose status is `requested` or
-  `working` but whose `sessionId` is empty or isn't a live session. Those are presses that didn't get
-  a session. Tell the owner and carry them out first, as below.
-
-### Control Room requests
-
-When asked to carry out request `<rid>`:
-
-1. `get` `requests/<rid>`. Stop if its status is not `requested` or `working`. `update` it to
-   `status: "working"`, with `sessionId` set to your own session id (`get_session` with no id) and
-   `note: "Working on it."`
-2. Work on `main`: `git fetch origin main && git checkout -B main origin/main`.
-3. **Publish:**
-   - `get` `wallpapers/<wallpaper>` with `out_dir: .dashboard`.
-   - Run `python tools/lw.py import .dashboard/wallpapers/<wallpaper>.json --force`.
-   - Check the document's `version` equals the request's `version`. If it doesn't, the wallpaper
-     changed after the owner pressed the button: fail the request.
-   - Run `python tools/lw.py check --glslang`. A compile error fails the request.
-   - Run `python tools/lw.py publish -m "Publish <name> (Control Room)"`.
-4. **Retire:** `git rm -r wallpapers/<wallpaper>`, then
-   `python tools/lw.py publish -m "Retire <name> (Control Room)"`.
-5. The GitHub Action then commits `catalog.json` again. `git pull` before any later push.
-6. **Update the dashboard:**
-   - After a publish: `python tools/lw.py export <wallpaper>`, then `update` its document. It now
-     reads `live` and carries the `added` date.
-   - After a retire: `update` it with `status: "retired"`. Keep the document, so "Publish again"
-     works.
-7. `update` the request with `status: "done"`, `finishedAt` (ISO time) and
-   `note: "Live in commit <short sha>."`. On any failure, set `status: "failed"` with `finishedAt`
-   and a plain-words `note` saying what went wrong and what fixes it. Push nothing in that case.
-
-Only the owner (editors) can write requests, so a request is the owner's approval for exactly that
-one change. Don't widen it: no other wallpapers, no tool or doc changes in the same push.
+  - Textures can't be previewed there yet. Say so to the owner if a wallpaper has images.
+- **Keep it current:** at the start of a session, compare the dashboard with `main`. If a PR was
+  merged, re-export that wallpaper; it now reads `live` and carries `added`. If one was retired,
+  `update` its status to `retired` and remove `prUrl`.
