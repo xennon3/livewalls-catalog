@@ -7,8 +7,9 @@
 //                            B wet rooftop, A the coat's loose tail
 // iChannel2  cars_atlas.png  the cars, cut out of the painting
 
-// Texture rows run top to bottom (Android bitmap order), so image v = 1 - screen v.
-const float FLIP = 1.0;
+// The app uploads images bottom row first (GL convention), so the painting's top is at v = 1.
+// FLIP = 1.0 would read them top row first; the app needs 0.0.
+const float FLIP = 0.0;
 
 float hash11(float p) {
     p = fract(p * 0.1031);
@@ -131,7 +132,8 @@ vec4 cars(vec2 qpx, float t, inout vec3 glowAdd) {
         // a car crossing the other way is mirrored, so it always flies nose first
         float flip = (a.y > 0.5 && dir.x > 0.0) != (s == 3 || s == 5) ? 1.0 : 0.0;
         vec2 l2 = vec2(mix(local.x, r.z - local.x, flip), local.y);
-        vec4 sp = texture(iChannel2, (SPR_ATL[s] + l2) / ATLAS_PX);
+        vec2 au = (SPR_ATL[s] + l2) / ATLAS_PX;
+        vec4 sp = texture(iChannel2, vec2(au.x, mix(1.0 - au.y, au.y, FLIP)));
         float al = sp.a * fade;
         acc.rgb = mix(acc.rgb, sp.rgb, al);
         acc.a = max(acc.a, al);
