@@ -204,6 +204,30 @@ const GL = (() => {
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
   const programs = new Map();
+  // wallpaper images (iChannel0-3), uploaded as artifact assets; doc field channelUrls
+  const textures = new Map();
+  function texture(url) {
+    if (textures.has(url)) return textures.get(url);
+    const e = { ready: false, failed: false, w: 0, h: 0, tex: null };
+    textures.set(url, e);
+    const img = new Image();
+    img.onload = () => {
+      e.tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, e.tex);
+      // like Android's GLUtils.texImage2D: the image's top row lands at t = 0
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      e.w = img.naturalWidth; e.h = img.naturalHeight; e.ready = true;
+      (window.lwTexReady || (() => {}))();
+    };
+    img.onerror = () => { e.failed = true; };
+    img.src = url;
+    return e;
+  }
   function program(w) {
     const key = w.id + '@' + w.version;
     if (programs.has(key)) return programs.get(key);
@@ -219,7 +243,8 @@ const GL = (() => {
       gl.linkProgram(p);
       const u = (n) => gl.getUniformLocation(p, n);
       e = gl.getProgramParameter(p, gl.LINK_STATUS)
-        ? { p, res: u('iResolution'), time: u('iTime'), dt: u('iTimeDelta'), frame: u('iFrame'), date: u('iDate'), off: u('iOffset') }
+        ? { p, res: u('iResolution'), time: u('iTime'), dt: u('iTimeDelta'), frame: u('iFrame'), date: u('iDate'), off: u('iOffset'),
+            chres: u('iChannelResolution'), ch: [0, 1, 2, 3].map((i) => u('iChannel' + i)) }
         : { error: gl.getProgramInfoLog(p) || 'link error' };
     }
     programs.set(key, e);
@@ -228,6 +253,10 @@ const GL = (() => {
   function draw(w, target, pw, ph, t, offset, frame, dt) {
     const pr = program(w);
     if (pr.error) return pr.error;
+    const urls = (w.channelUrls || []).slice(0, 4);
+    const tex = urls.map(texture);
+    if (tex.some((x) => x.failed)) return 'An image for this wallpaper did not load';
+    if (tex.some((x) => !x.ready)) return 'loading';
     canvas.width = pw; canvas.height = ph;
     gl.viewport(0, 0, pw, ph);
     gl.useProgram(pr.p);
@@ -241,6 +270,14 @@ const GL = (() => {
     const d = new Date();
     gl.uniform4f(pr.date, d.getFullYear(), d.getMonth(), d.getDate(), d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds());
     gl.uniform2f(pr.off, offset, 0);
+    const res = new Float32Array(12);
+    tex.forEach((x, i) => {
+      gl.activeTexture(gl.TEXTURE0 + i);
+      gl.bindTexture(gl.TEXTURE_2D, x.tex);
+      gl.uniform1i(pr.ch[i], i);
+      res[i * 3] = x.w; res[i * 3 + 1] = x.h; res[i * 3 + 2] = 1;
+    });
+    gl.uniform3fv(pr.chres, res);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     if (target.width !== pw || target.height !== ph) { target.width = pw; target.height = ph; }
     target.getContext('2d').drawImage(canvas, 0, 0);
@@ -291,10 +328,16 @@ function renderHeader() {
 // ------------------------------------------------------------------ gallery
 const thumbs = new Map();
 const thumbQueue = [];
+const waitingThumbs = [];
+window.lwTexReady = () => {
+  thumbQueue.push(...waitingThumbs.splice(0));
+  if (thumbQueue.length) requestAnimationFrame(pumpThumbs);
+};
 function pumpThumbs() {
   const job = thumbQueue.shift();
   if (!job) return;
-  GL.draw(job.w, job.canvas, 180, 320, Number(job.w.thumbTime) || 0, 0.5);
+  const r = GL.draw(job.w, job.canvas, 180, 320, Number(job.w.thumbTime) || 0, 0.5);
+  if (r === 'loading') waitingThumbs.push(job);
   requestAnimationFrame(pumpThumbs);
 }
 function thumbFor(w) {
@@ -363,7 +406,7 @@ function renderStage(now, force) {
   const t = (el2 / 1000 + (Number(w.thumbTime) || 0)) % (Number(w.loop) || 3600);
   const err = GL.draw(w, stageCanvas, pw, ph, t, offset, frame++, dt);
   stageMsg.hidden = !err;
-  if (err) stageMsg.textContent = "Shader didn't compile in this browser";
+  if (err) stageMsg.textContent = err === 'loading' ? 'Loading the artwork…' : err.startsWith('An image') ? err : "Shader didn't compile in this browser";
 }
 (function tick(now) { requestAnimationFrame(tick); if (playing) renderStage(now, false); })(performance.now());
 
