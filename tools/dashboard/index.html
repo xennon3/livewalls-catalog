@@ -1,0 +1,581 @@
+<title>LiveWalls Control Room</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<!--
+  LiveWalls Control Room. Source of the dashboard published at the URL in CLAUDE.md; republish it
+  with the Artifact tool (same url) after editing. Data lives in the artifact's database:
+    wallpapers/<id>  one doc per wallpaper, written by agents from `python tools/lw.py export`
+    requests/<id>    Publish / Retire presses, carried out by Claude Code sessions (CLAUDE.md)
+  Capabilities: db, user, mcp (Claude Code Remote: create_session, get_session).
+-->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+/* Layout: a night-shift control desk. Phone-shaped live preview on the left, the wallpaper rack on
+   the right, decisions (publish / retire) sit under the preview where you judge the wallpaper.
+   One dark look on purpose: the wallpapers are dark and read truest on dark. */
+:root {
+  --bg: #0b0814; --panel: #141022; --line: #2a2340; --fg: #efe9fb; --muted: #a79cc2;
+  --pink: #ff4fd8; --violet: #7c5cff; --ok: #4fe3a1; --warn: #ffc457; --bad: #ff6b7d;
+  --display: "Chakra Petch", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --r: 10px;
+  color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.45; }
+.cr { max-width: 76rem; margin-inline: auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px; display: flex; flex-direction: column; gap: 20px; }
+h1 { margin: 0; font-family: var(--display); font-weight: 600; font-size: clamp(1.5rem, 4vw, 2rem); letter-spacing: .04em; text-wrap: balance; }
+h1 span { color: var(--pink); }
+h2 { margin: 0; font-size: 1rem; font-weight: 500; }
+.take { margin: 4px 0 0; color: var(--muted); max-width: 65ch; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 12px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.kpi b { font-family: var(--display); font-weight: 600; font-size: 1.9rem; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.kpi span { font-size: .78rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.kpi.hot b { color: var(--warn); }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
+.tab { font: inherit; background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 12px; color: var(--muted); cursor: pointer; }
+.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--pink); }
+.tab .count { font-family: var(--mono); font-size: .75rem; color: var(--warn); margin-left: 4px; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--pink); outline-offset: 2px; }
+.grid { display: grid; grid-template-columns: minmax(0, 20rem) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 760px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.stage { position: relative; height: min(34rem, 66vh); aspect-ratio: 9 / 20; max-width: 100%; margin-inline: auto; background: #000; border-radius: 18px; overflow: hidden; cursor: ew-resize; touch-action: pan-y; box-shadow: 0 0 0 1px var(--line), 0 0 40px rgba(124, 92, 255, .18); }
+.stage canvas { width: 100%; height: 100%; display: block; }
+.stage-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; text-align: center; color: var(--muted); font-size: .85rem; }
+.vrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.vname { font-family: var(--display); font-weight: 600; font-size: 1.3rem; letter-spacing: .03em; }
+.specs { font-family: var(--mono); font-size: .75rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; font-variant-numeric: tabular-nums; }
+.note { margin: 0; color: var(--muted); font-size: .85rem; max-width: 65ch; }
+.checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: .85rem; }
+.checks li::before { display: inline-block; width: 1.3em; font-family: var(--mono); }
+.checks .y::before { content: "✓"; color: var(--ok); }
+.checks .n::before { content: "!"; color: var(--warn); }
+.checks .x::before { content: "✕"; color: var(--bad); }
+.btn { font: inherit; font-size: .85rem; font-weight: 500; border-radius: 999px; padding: 7px 14px; cursor: pointer; border: 1px solid var(--line); background: none; color: var(--fg); }
+.btn.go { background: var(--pink); border-color: var(--pink); color: #1a0716; }
+.btn.danger { border-color: var(--bad); color: var(--bad); }
+.btn.danger.solid { background: var(--bad); color: #1a0709; }
+.btn[disabled] { opacity: .5; cursor: default; }
+.actions { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.actions .row { display: flex; flex-wrap: wrap; gap: 8px; }
+.confirm { border: 1px solid var(--warn); border-radius: var(--r); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; font-size: .85rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-size: .8rem; background: none; color: var(--fg); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 12px; }
+.card { font: inherit; color: inherit; text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 5px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; min-width: 0; }
+.card[aria-current="true"] { border-color: var(--pink); box-shadow: 0 0 0 1px var(--pink); }
+.thumb { width: 100%; aspect-ratio: 9 / 16; background: #000; border-radius: 7px; display: block; }
+.cmeta { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 3px 3px; min-width: 0; }
+.cname { font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill { flex: none; font-family: var(--mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; border: 1px solid currentColor; border-radius: 999px; padding: 0 6px; line-height: 1.6; }
+.pill.live, .pill.done { color: var(--ok); }
+.pill.new { color: var(--pink); }
+.pill.pending, .pill.changed, .pill.requested, .pill.working { color: var(--warn); }
+.pill.retired, .pill.cancelled { color: var(--muted); }
+.pill.failed { color: var(--bad); }
+.empty { color: var(--muted); font-size: .9rem; padding: 24px 8px; text-align: center; }
+.queue { display: flex; flex-direction: column; gap: 10px; }
+.req { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: start; }
+.req .what { font-weight: 500; }
+.req .when { font-family: var(--mono); font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.req .msg { grid-column: 1 / -1; font-size: .85rem; color: var(--muted); overflow-wrap: anywhere; }
+.req .row { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.req a { color: var(--violet); }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: 12px; }
+.box ul { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: .88rem; }
+.tag { font-family: var(--mono); font-size: .72rem; color: var(--warn); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="cr">
+  <header>
+    <h1>LiveWalls <span>Control Room</span></h1>
+    <p class="take" id="takeaway">Loading the catalog…</p>
+  </header>
+
+  <div class="kpis">
+    <div class="kpi"><b id="k-live">–</b><span>Live in the app</span></div>
+    <div class="kpi" id="k-pending-box"><b id="k-pending">–</b><span>Waiting to publish</span></div>
+    <div class="kpi"><b id="k-queue">–</b><span>Requests in progress</span></div>
+    <div class="kpi"><b id="k-retired">–</b><span>Retired</span></div>
+  </div>
+
+  <div class="tabs" role="tablist" aria-label="Sections">
+    <button class="tab" role="tab" id="tab-gallery" data-page="gallery" aria-selected="true">Gallery</button>
+    <button class="tab" role="tab" id="tab-queue" data-page="queue" aria-selected="false">Publish queue<span class="count" id="queue-count"></span></button>
+    <button class="tab" role="tab" id="tab-audience" data-page="audience" aria-selected="false">Audience</button>
+  </div>
+
+  <section id="gallery" role="tabpanel" aria-labelledby="tab-gallery">
+    <div class="grid">
+      <div class="box" id="viewer">
+        <div class="stage" id="stage"><canvas id="stage-canvas"></canvas><div class="stage-msg" id="stage-msg">Pick a wallpaper</div></div>
+        <div class="vrow">
+          <span class="vname" id="v-name">–</span>
+          <span class="pill" id="v-pill" hidden></span>
+        </div>
+        <div class="specs" id="v-specs"></div>
+        <p class="note" id="v-desc"></p>
+        <ul class="checks" id="v-checks"></ul>
+        <div class="vrow">
+          <button class="btn" id="v-play" type="button">Pause</button>
+          <span class="note">Drag sideways to swipe home screens</span>
+        </div>
+        <div class="actions" id="v-actions"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+        <div class="chips" role="group" aria-label="Show">
+          <button class="chip" type="button" data-show="all" aria-pressed="true">All</button>
+          <button class="chip" type="button" data-show="waiting" aria-pressed="false">Waiting</button>
+          <button class="chip" type="button" data-show="live" aria-pressed="false">Live</button>
+          <button class="chip" type="button" data-show="retired" aria-pressed="false">Retired</button>
+        </div>
+        <div class="cards" id="cards"><div class="empty">Loading wallpapers…</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="queue" role="tabpanel" aria-labelledby="tab-queue" hidden>
+    <div class="box">
+      <h2>How a button press goes live</h2>
+      <p class="note">Publish and Retire start a Claude Code session on your account. It takes the wallpaper from this dashboard, checks it compiles, pushes to main and marks the request done here. The app picks it up within minutes. If the session can't start from here, the request waits until the next Claude Code session on the catalog repo, which carries it out first.</p>
+    </div>
+    <div class="queue" id="requests"><div class="empty">No requests yet.</div></div>
+  </section>
+
+  <section id="audience" role="tabpanel" aria-labelledby="tab-audience" hidden>
+    <div class="box">
+      <h2>What people like</h2>
+      <p class="note">LiveWalls collects no usage data: no analytics, accounts or tracking, as its privacy policy promises. There are no favourites or apply counts to show yet. These are the ways to get them, from least to most change.</p>
+    </div>
+    <div class="cols" style="margin-top:12px">
+      <div class="box"><h2>Google Play Console</h2><span class="tag">No app change</span>
+        <ul><li>Installs, uninstalls and active devices per day</li><li>Ratings and review text, which often name favourite wallpapers</li><li>Download the CSV reports and give them to Claude to chart here</li></ul></div>
+      <div class="box"><h2>Anonymous popularity counts</h2><span class="tag">App release + privacy policy update</span>
+        <ul><li>One anonymous "applied" ping per wallpaper, no device id</li><li>Ranks wallpapers by how often they're set and kept</li><li>Opt-in, so it keeps the no-tracking promise</li></ul></div>
+      <div class="box"><h2>In-app hearts</h2><span class="tag">App release</span>
+        <ul><li>A heart on each wallpaper page</li><li>A "Most loved" row in the gallery</li><li>Counted on the phone, or anonymously as above</li></ul></div>
+    </div>
+  </section>
+</div>
+
+<script>
+// ------------------------------------------------------------------ settings
+const DASHBOARD_URL = 'https://claude.ai/artifact/EEv1GKcprRAgLxaYDdyrYM';
+const REPO_URL = 'https://github.com/xennon3/livewalls-catalog';
+const ENVIRONMENT_ID = 'env_01UNBNFcjBKcedMXkrVbBnZi';
+const CCR = 'Claude Code Remote';
+
+// ------------------------------------------------------------------ renderer (same header as the app)
+const HEADER = `#version 300 es
+precision highp float;
+precision highp int;
+uniform vec3 iResolution;
+uniform float iTime;
+uniform float iTimeDelta;
+uniform int iFrame;
+uniform vec4 iMouse;
+uniform vec4 iDate;
+uniform vec2 iOffset;
+uniform vec3 iChannelResolution[4];
+uniform sampler2D iChannel0;
+uniform sampler2D iChannel1;
+uniform sampler2D iChannel2;
+uniform sampler2D iChannel3;
+out vec4 lw_FragColor;
+#line 1
+`;
+const FOOTER = `
+void main() {
+    vec4 c = vec4(0.0, 0.0, 0.0, 1.0);
+    mainImage(c, gl_FragCoord.xy);
+    lw_FragColor = vec4(c.rgb, 1.0);
+}
+`;
+const GL = (() => {
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false });
+  if (!gl) return null;
+  const vs = gl.createShader(gl.VERTEX_SHADER);
+  gl.shaderSource(vs, '#version 300 es\nin vec2 a;void main(){gl_Position=vec4(a,0.0,1.0);}');
+  gl.compileShader(vs);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const programs = new Map();
+  function program(w) {
+    const key = w.id + '@' + w.version;
+    if (programs.has(key)) return programs.get(key);
+    const fs = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fs, HEADER + ((w.files || {})['scene.frag'] || '') + FOOTER);
+    gl.compileShader(fs);
+    let e;
+    if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) e = { error: gl.getShaderInfoLog(fs) || 'compile error' };
+    else {
+      const p = gl.createProgram();
+      gl.attachShader(p, vs); gl.attachShader(p, fs);
+      gl.bindAttribLocation(p, 0, 'a');
+      gl.linkProgram(p);
+      const u = (n) => gl.getUniformLocation(p, n);
+      e = gl.getProgramParameter(p, gl.LINK_STATUS)
+        ? { p, res: u('iResolution'), time: u('iTime'), dt: u('iTimeDelta'), frame: u('iFrame'), date: u('iDate'), off: u('iOffset') }
+        : { error: gl.getProgramInfoLog(p) || 'link error' };
+    }
+    programs.set(key, e);
+    return e;
+  }
+  function draw(w, target, pw, ph, t, offset, frame, dt) {
+    const pr = program(w);
+    if (pr.error) return pr.error;
+    canvas.width = pw; canvas.height = ph;
+    gl.viewport(0, 0, pw, ph);
+    gl.useProgram(pr.p);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.uniform3f(pr.res, pw, ph, 1);
+    gl.uniform1f(pr.time, t);
+    gl.uniform1f(pr.dt, dt || 0);
+    gl.uniform1i(pr.frame, frame || 0);
+    const d = new Date();
+    gl.uniform4f(pr.date, d.getFullYear(), d.getMonth(), d.getDate(), d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds());
+    gl.uniform2f(pr.off, offset, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if (target.width !== pw || target.height !== ph) { target.width = pw; target.height = ph; }
+    target.getContext('2d').drawImage(canvas, 0, 0);
+    return null;
+  }
+  return { draw };
+})();
+
+// ------------------------------------------------------------------ state
+const S = { walls: [], reqs: [], show: 'all', selected: null, confirm: null, canEdit: false, busy: false, page: 'gallery', db: null, user: null, flash: '' };
+const LABEL = { live: 'Live', pending: 'Pending', changed: 'Edited', retired: 'Retired', requested: 'Queued', working: 'Working', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
+const OPEN = ['requested', 'working'];
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const isNew = (w) => w.status === 'live' && w.added && Date.now() < Date.parse(w.added) + 14 * 86400000;
+const openReq = (id) => S.reqs.find((r) => r.wallpaper === id && OPEN.includes(r.status));
+const fmtWhen = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); };
+
+// ------------------------------------------------------------------ tabs
+function showPage(page) {
+  S.page = page;
+  for (const p of ['gallery', 'queue', 'audience']) {
+    $(p).hidden = p !== page;
+    $('tab-' + p).setAttribute('aria-selected', String(p === page));
+  }
+}
+document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => showPage(b.dataset.page)));
+document.querySelectorAll('.chip').forEach((b) => b.addEventListener('click', () => {
+  S.show = b.dataset.show;
+  document.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String(c === b)));
+  renderCards();
+}));
+if (['queue', 'audience'].includes(location.hash.slice(1))) showPage(location.hash.slice(1));
+
+// ------------------------------------------------------------------ header
+function renderHeader() {
+  const w = S.walls;
+  const live = w.filter((x) => x.status === 'live' || x.status === 'changed').length;
+  const waiting = w.filter((x) => x.status === 'pending' || x.status === 'changed');
+  const retired = w.filter((x) => x.status === 'retired').length;
+  const inQueue = S.reqs.filter((r) => OPEN.includes(r.status)).length;
+  $('k-live').textContent = live;
+  $('k-pending').textContent = waiting.length;
+  $('k-pending-box').classList.toggle('hot', waiting.length > 0);
+  $('k-queue').textContent = inQueue;
+  $('k-retired').textContent = retired;
+  $('queue-count').textContent = inQueue ? String(inQueue) : '';
+  if (!w.length) { $('takeaway').textContent = S.db ? 'No wallpapers here yet. A Claude session adds them with lw.py export.' : 'Loading the catalog…'; return; }
+  $('takeaway').textContent = waiting.length
+    ? `${waiting.map((x) => x.name).join(', ')} ${waiting.length === 1 ? 'is' : 'are'} waiting for your decision. Preview, then publish or leave it.`
+    : `All ${live} wallpapers are live. Nothing is waiting to publish.`;
+}
+
+// ------------------------------------------------------------------ gallery
+const thumbs = new Map();
+const thumbQueue = [];
+function pumpThumbs() {
+  const job = thumbQueue.shift();
+  if (!job) return;
+  GL.draw(job.w, job.canvas, 180, 320, Number(job.w.thumbTime) || 0, 0.5);
+  requestAnimationFrame(pumpThumbs);
+}
+function thumbFor(w) {
+  const key = w.id + '@' + w.version;
+  if (!thumbs.has(key)) {
+    const c = el('canvas', 'thumb'); c.width = 180; c.height = 320;
+    thumbs.set(key, c);
+    if (GL) { thumbQueue.push({ w, canvas: c }); if (thumbQueue.length === 1) requestAnimationFrame(pumpThumbs); }
+  }
+  return thumbs.get(key);
+}
+function statusPill(w) {
+  const r = openReq(w.id);
+  if (r) return ['requested', (r.action === 'retire' ? 'Retiring' : 'Publishing')];
+  if (isNew(w)) return ['new', 'New'];
+  return [w.status, LABEL[w.status] || w.status];
+}
+function renderCards() {
+  const order = { pending: 0, changed: 1, live: 2, retired: 3 };
+  const list = S.walls.filter((w) => S.show === 'all' ? w.status !== 'retired'
+    : S.show === 'waiting' ? (w.status === 'pending' || w.status === 'changed')
+    : S.show === 'live' ? (w.status === 'live' || w.status === 'changed') : w.status === 'retired')
+    .sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || a.name.localeCompare(b.name));
+  const cards = $('cards');
+  if (!list.length) { cards.replaceChildren(el('div', 'empty', S.walls.length ? 'Nothing in this view.' : (S.db ? 'No wallpapers yet.' : 'Loading wallpapers…'))); return; }
+  cards.replaceChildren(...list.map((w) => {
+    const b = el('button', 'card'); b.type = 'button';
+    b.setAttribute('aria-current', String(S.selected === w.id));
+    const [cls, txt] = statusPill(w);
+    b.setAttribute('aria-label', `${w.name}, ${txt}`);
+    const meta = el('div', 'cmeta');
+    meta.append(el('span', 'cname', w.name), el('span', 'pill ' + cls, txt));
+    b.append(thumbFor(w), meta);
+    b.addEventListener('click', () => select(w.id));
+    return b;
+  }));
+}
+
+// ------------------------------------------------------------------ viewer
+const stage = $('stage'), stageCanvas = $('stage-canvas'), stageMsg = $('stage-msg'), playBtn = $('v-play');
+let playing = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+let offset = 0.5, target = 0.5, t0 = performance.now(), pausedAt = 0, last = 0, frame = 0, dragX = null;
+playBtn.textContent = playing ? 'Pause' : 'Play';
+playBtn.addEventListener('click', () => {
+  if (playing) pausedAt = performance.now() - t0; else t0 = performance.now() - pausedAt;
+  playing = !playing; playBtn.textContent = playing ? 'Pause' : 'Play';
+});
+stage.addEventListener('pointerdown', (e) => { dragX = e.clientX; stage.setPointerCapture(e.pointerId); });
+stage.addEventListener('pointermove', (e) => {
+  if (dragX === null) return;
+  target = Math.min(1, Math.max(0, target - (e.clientX - dragX) / stage.clientWidth));
+  dragX = e.clientX;
+  if (!playing) renderStage(performance.now(), true);
+});
+['pointerup', 'pointercancel'].forEach((n) => stage.addEventListener(n, () => { dragX = null; }));
+const current = () => S.walls.find((w) => w.id === S.selected);
+function renderStage(now, force) {
+  const w = current();
+  if (!w || !GL || S.page !== 'gallery' || document.hidden) return;
+  const cap = Number(w.fps) || 60;
+  if (!force && now - last < 1000 / cap - 2) return;
+  const dt = (now - last) / 1000; last = now;
+  offset += (target - offset) * 0.2;
+  const s = Math.min(1, Math.max(0.25, Number(w.scale) || 1));
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const pw = Math.max(1, Math.round(stage.clientWidth * dpr * s)), ph = Math.max(1, Math.round(stage.clientHeight * dpr * s));
+  const el2 = playing ? now - t0 : pausedAt;
+  const t = (el2 / 1000 + (Number(w.thumbTime) || 0)) % (Number(w.loop) || 3600);
+  const err = GL.draw(w, stageCanvas, pw, ph, t, offset, frame++, dt);
+  stageMsg.hidden = !err;
+  if (err) stageMsg.textContent = "Shader didn't compile in this browser";
+}
+(function tick(now) { requestAnimationFrame(tick); if (playing) renderStage(now, false); })(performance.now());
+
+function select(id) {
+  if (S.selected !== id) { S.confirm = null; t0 = performance.now(); pausedAt = 0; frame = 0; }
+  S.selected = id;
+  renderViewer();
+  renderCards();
+  renderStage(performance.now(), true);
+}
+
+function renderViewer() {
+  const w = current();
+  if (!w) return;
+  if (!GL) { stageMsg.hidden = false; stageMsg.textContent = 'This browser has no WebGL2, so previews cannot run here.'; }
+  $('v-name').textContent = w.name;
+  const [cls, txt] = statusPill(w);
+  const pill = $('v-pill'); pill.hidden = false; pill.className = 'pill ' + cls; pill.textContent = txt;
+  const specs = [(Number(w.fps) || 60) + ' fps cap', 'scale ' + (Number(w.scale) || 1), 'loop ' + (Number(w.loop) || 3600) + 's', 'thumb @' + (Number(w.thumbTime) || 0) + 's'];
+  if (w.added) specs.push('added ' + w.added);
+  $('v-specs').replaceChildren(...specs.map((s) => el('span', '', s)));
+  $('v-desc').textContent = w.description || '';
+  const checks = [
+    [w.compiles === 'yes' ? 'y' : w.compiles === 'no' ? 'x' : 'n', w.compiles === 'yes' ? 'Compiles with glslang' : w.compiles === 'no' ? 'Does not compile: ' + (w.problems || '') : 'Compile not checked yet'],
+    [w.description ? 'y' : 'n', w.description ? 'Has a description' : 'No description'],
+    [Number(w.thumbTime) > 0 ? 'y' : 'n', Number(w.thumbTime) > 0 ? 'Thumbnail moment set' : 'No thumbnail moment'],
+    [w.measuredFps ? (w.measuredFps >= 1.5 * (Number(w.fps) || 60) || w.measuredFps >= 59 ? 'y' : 'x') : 'n',
+      w.measuredFps ? `Phone test: ${w.measuredFps} fps (cap ${Number(w.fps) || 60})` : 'Not measured on the phone yet'],
+  ];
+  $('v-checks').replaceChildren(...checks.map(([c, t]) => el('li', c, t)));
+  renderActions(w);
+}
+
+function renderActions(w) {
+  const box = $('v-actions');
+  const r = openReq(w.id);
+  const parts = [];
+  if (S.flash) parts.push(el('p', 'note', S.flash));
+  if (r) {
+    parts.push(el('p', 'note', `${r.action === 'retire' ? 'Retire' : 'Publish'} requested ${fmtWhen(r.requestedAt)}: ${LABEL[r.status]}. See the publish queue.`));
+  } else if (!S.canEdit) {
+    parts.push(el('p', 'note', 'Only editors of this dashboard can publish or retire.'));
+  } else if (S.confirm) {
+    const c = el('div', 'confirm');
+    const retire = S.confirm === 'retire';
+    const warn = [];
+    if (!retire && w.compiles === 'no') warn.push('It does not compile, so the app will show an error.');
+    if (!retire && !w.measuredFps) warn.push('It has not been measured on the phone yet.');
+    c.append(el('div', '', retire
+      ? `Retire ${w.name}? It leaves the app's gallery on the next sync. People who applied it keep it until they switch away.`
+      : `Publish ${w.name}? It goes live to every LiveWalls user within minutes.`));
+    if (warn.length) c.append(el('div', 'note', warn.join(' ')));
+    const row = el('div', 'row');
+    const yes = el('button', retire ? 'btn danger solid' : 'btn go', retire ? 'Yes, retire it' : 'Yes, publish it');
+    yes.type = 'button'; yes.disabled = S.busy;
+    yes.addEventListener('click', () => request(w, S.confirm));
+    const no = el('button', 'btn', 'Cancel'); no.type = 'button';
+    no.addEventListener('click', () => { S.confirm = null; renderViewer(); });
+    row.append(yes, no); c.append(row); parts.push(c);
+  } else {
+    const row = el('div', 'row');
+    if (w.status === 'pending' || w.status === 'changed' || w.status === 'retired') {
+      const b = el('button', 'btn go', w.status === 'changed' ? 'Publish changes' : w.status === 'retired' ? 'Publish again' : 'Publish to app');
+      b.type = 'button'; b.addEventListener('click', () => { S.confirm = 'publish'; S.flash = ''; renderViewer(); });
+      row.append(b);
+    }
+    if (w.status === 'live' || w.status === 'changed') {
+      const b = el('button', 'btn danger', 'Retire');
+      b.type = 'button'; b.addEventListener('click', () => { S.confirm = 'retire'; S.flash = ''; renderViewer(); });
+      row.append(b);
+    }
+    parts.push(row);
+  }
+  box.replaceChildren(...parts);
+}
+
+// ------------------------------------------------------------------ requests
+function sessionPrompt(w, action, reqId) {
+  return [
+    `Control Room request ${reqId}: the owner pressed "${action === 'retire' ? 'Retire' : 'Publish'}" for wallpaper \`${w.id}\` (${w.name}) in the LiveWalls Control Room dashboard (${DASHBOARD_URL}).`,
+    `That press is their approval to push this one change to main of xennon3/livewalls-catalog.`,
+    `Follow the "Control Room requests" section of CLAUDE.md for request ${reqId} only, update the request and the dashboard as it says, then stop.`,
+  ].join('\n');
+}
+
+function sessionIdFrom(res) {
+  const text = JSON.stringify(res && (res.payload ?? res.structuredContent ?? res.content) || '');
+  const m = text.match(/session_[A-Za-z0-9]+/);
+  return m ? m[0] : null;
+}
+
+async function startSession(w, action, reqId) {
+  const mcp = await claude.use('mcp');
+  if (!mcp) return { error: 'Claude Code isn’t reachable from this view, so the request waits for your next Claude Code session on the catalog repo.' };
+  try {
+    const res = await mcp.callTool(CCR, 'create_session', {
+      environment_id: ENVIRONMENT_ID,
+      source_url: REPO_URL,
+      outcome_branch: 'main',
+      title: `${action === 'retire' ? 'Retire' : 'Publish'} ${w.name} (Control Room)`,
+      prompt: sessionPrompt(w, action, reqId),
+    }, { cache: false });
+    return { sessionId: sessionIdFrom(res) };
+  } catch (e) {
+    const why = e && e.code === 'not_granted' ? 'Claude Code access wasn’t allowed for this page'
+      : e && e.code === 'server_not_connected' ? 'Claude Code isn’t connected on this account'
+      : (e && e.message) || 'the session could not start';
+    return { error: `${why}. The request waits for your next Claude Code session on the catalog repo.` };
+  }
+}
+
+async function request(w, action) {
+  if (S.busy || !S.db) return;
+  S.busy = true; renderViewer();
+  const reqId = `${Date.now()}-${action}-${w.id}`;
+  const doc = S.db.collection('requests').doc(reqId);
+  try {
+    await doc.set({ wallpaper: w.id, name: w.name, action, version: w.version || '', status: 'requested', requestedAt: new Date().toISOString(), requestedBy: S.user ? await S.user.id() : '', sessionId: '', note: '' });
+  } catch (e) {
+    S.busy = false; S.flash = 'Couldn’t save the request: ' + ((e && e.message) || 'unknown error'); renderViewer(); return;
+  }
+  S.confirm = null;
+  const out = await startSession(w, action, reqId);
+  try {
+    if (out.sessionId) await doc.update({ status: 'working', sessionId: out.sessionId, note: 'Claude Code session started.' });
+    else await doc.update({ note: out.error || 'Session started; its id was not returned.' });
+  } catch (e) { /* the snapshot shows whatever was saved */ }
+  S.flash = out.sessionId ? 'Started a Claude Code session. Follow it in the publish queue.' : out.error;
+  S.busy = false;
+  renderViewer();
+}
+
+async function cancelReq(r) {
+  try { await S.db.collection('requests').doc(r.id).update({ status: 'cancelled', note: 'Cancelled from the dashboard.' }); } catch (e) { /* stays as is */ }
+}
+
+async function checkSession(r, btn) {
+  const mcp = await claude.use('mcp');
+  if (!mcp || !r.sessionId) return;
+  btn.disabled = true; btn.textContent = 'Checking…';
+  try {
+    const res = await mcp.callTool(CCR, 'get_session', { session_id: r.sessionId }, { cache: false });
+    const text = JSON.stringify(res.payload ?? res.structuredContent ?? res.content ?? '');
+    const m = text.match(/SESSION_STATUS_BUCKET_([A-Z_]+)/) || text.match(/"status_bucket"\s*:\s*"([a-z_]+)"/i);
+    btn.textContent = m ? 'Session: ' + m[1].toLowerCase().replace(/_/g, ' ') : 'Session found';
+  } catch (e) {
+    btn.textContent = 'Couldn’t check';
+  }
+  btn.disabled = false;
+}
+
+function renderQueue() {
+  const box = $('requests');
+  if (!S.reqs.length) { box.replaceChildren(el('div', 'empty', 'No requests yet. Publish or Retire a wallpaper from the gallery.')); return; }
+  box.replaceChildren(...S.reqs.map((r) => {
+    const card = el('div', 'req');
+    card.append(el('div', 'what', `${r.action === 'retire' ? 'Retire' : 'Publish'} ${r.name || r.wallpaper}`), el('span', 'pill ' + r.status, LABEL[r.status] || r.status));
+    card.append(el('div', 'when', 'Requested ' + fmtWhen(r.requestedAt) + (r.finishedAt ? ' · finished ' + fmtWhen(r.finishedAt) : '')));
+    if (r.note) card.append(el('div', 'msg', r.note));
+    const row = el('div', 'row');
+    if (r.sessionId) {
+      const a = el('a', '', 'Open the Claude Code session');
+      a.href = 'https://claude.ai/code/' + encodeURIComponent(r.sessionId); a.target = '_blank'; a.rel = 'noopener';
+      row.append(a);
+      if (OPEN.includes(r.status)) {
+        const b = el('button', 'btn', 'Check status'); b.type = 'button';
+        b.addEventListener('click', () => checkSession(r, b));
+        row.append(b);
+      }
+    }
+    if (S.canEdit && r.status === 'requested') {
+      const c = el('button', 'btn', 'Cancel request'); c.type = 'button';
+      c.addEventListener('click', () => cancelReq(r));
+      row.append(c);
+    }
+    if (row.childNodes.length) card.append(row);
+    return card;
+  }));
+}
+
+function renderAll() {
+  renderHeader();
+  if (!S.selected || !current()) {
+    const first = S.walls.find((w) => w.status === 'pending' || w.status === 'changed') || S.walls.find((w) => w.status === 'live');
+    if (first) { select(first.id); } else renderCards();
+  } else { renderViewer(); renderCards(); }
+  renderQueue();
+}
+
+// ------------------------------------------------------------------ data
+(async () => {
+  const [db, user] = await Promise.all([claude.use('db'), claude.use('user')]);
+  S.user = user;
+  S.canEdit = user ? (user.can('data.write') ?? user.canEdit()) !== false : false;
+  if (!db) { $('takeaway').textContent = 'Sign in to claude.ai to see the catalog.'; $('cards').replaceChildren(el('div', 'empty', 'The catalog loads once you are signed in.')); return; }
+  S.db = db;
+  db.collection('wallpapers').onSnapshot((snap) => {
+    S.walls = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    renderAll();
+  }, () => { $('takeaway').textContent = 'Couldn’t load the catalog. Reload the page to try again.'; });
+  db.collection('requests').orderBy('requestedAt', 'desc').limit(50).onSnapshot((snap) => {
+    S.reqs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    renderAll();
+  }, () => { $('requests').replaceChildren(el('div', 'empty', 'Couldn’t load the queue.')); });
+})();
+</script>

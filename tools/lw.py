@@ -7,6 +7,8 @@
   python tools/lw.py check                       validate every wallpaper
   python tools/lw.py build                       regenerate catalog.json
   python tools/lw.py publish                     check + build + commit + push -> live in the app
+  python tools/lw.py export rainglass            write Control Room dashboard docs to .dashboard/
+  python tools/lw.py import .dashboard/x.json    recreate a wallpaper folder from a dashboard doc
 
 Folder names become wallpaper ids: lowercase letters, digits and dashes.
 """
@@ -179,12 +181,7 @@ def cmd_check(args):
 
 # ------------------------------------------------------------------------------------- build
 
-def entry(d):
-    meta = load_meta(d)
-    if "added" not in meta:
-        # Stamp the publish date once so it never changes afterwards.
-        meta["added"] = datetime.date.today().isoformat()
-        (d / META).write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+def version_of(d, meta):
     channels = [str(c) for c in meta.get("channels", [])]
     files = [SHADER] + channels
     h = hashlib.sha256()
@@ -194,12 +191,22 @@ def entry(d):
         if name == SHADER:
             data = data.replace(b"\r\n", b"\n")  # same hash on Windows and in CI
         h.update(data)
+    return files, channels, h.hexdigest()[:12]
+
+
+def entry(d):
+    meta = load_meta(d)
+    if "added" not in meta:
+        # Stamp the publish date once so it never changes afterwards.
+        meta["added"] = datetime.date.today().isoformat()
+        (d / META).write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    files, channels, version = version_of(d, meta)
     e = {
         "id": d.name,
         "name": meta.get("name") or d.name.replace("-", " ").title(),
         "author": meta.get("author", ""),
         "description": meta.get("description", ""),
-        "version": h.hexdigest()[:12],
+        "version": version,
         "added": meta["added"],
         "files": files,
         "channels": channels,
@@ -226,6 +233,91 @@ def cmd_build(args=None):
         print(f"catalog.json updated ({len(entries)} wallpapers)")
     else:
         print(f"catalog.json already up to date ({len(entries)} wallpapers)")
+
+
+# ------------------------------------------------------------------------- Control Room dashboard
+# The dashboard (see CLAUDE.md) keeps one document per wallpaper in its `wallpapers` collection.
+# `export` writes those documents as JSON files for ArtifactData; `import` turns one back into a
+# folder, which is how a fresh session publishes a wallpaper that only exists in the dashboard.
+
+DASH_DIR = ROOT / ".dashboard"
+
+
+def dash_doc(d, live, glslang):
+    meta = load_meta(d)
+    _, channels, version = version_of(d, meta)
+    probs = problems(d, glslang)
+    published = live.get(d.name)
+    if not published:
+        status = "pending"
+    elif published["version"] != version:
+        status = "changed"
+    else:
+        status = "live"
+    return {
+        "id": d.name,
+        "name": meta.get("name") or d.name.replace("-", " ").title(),
+        "author": meta.get("author", ""),
+        "description": meta.get("description", ""),
+        "status": status,
+        "added": (published or {}).get("added") or meta.get("added", ""),
+        "fps": meta.get("fps", 60),
+        "scale": meta.get("scale", 1),
+        "loop": meta.get("loop", 3600),
+        "thumbTime": meta.get("thumbTime", 0),
+        "version": version,
+        "compiles": "yes" if not probs and glslang else ("no" if probs else "unchecked"),
+        "problems": "; ".join(probs),
+        "images": channels,
+        "files": {
+            SHADER: (d / SHADER).read_text(encoding="utf-8"),
+            META: (d / META).read_text(encoding="utf-8") if (d / META).exists() else "{}\n",
+        },
+        "exportedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+def cmd_export(args):
+    glslang = shutil.which("glslangValidator")
+    if not glslang:
+        print("note: glslangValidator not found, so compiles = 'unchecked'")
+    # What is live is what main's catalog.json lists, not this working copy's.
+    r = git("show", "origin/main:catalog.json", check=False)
+    text = r.stdout if r.returncode == 0 else (CATALOG.read_text(encoding="utf-8") if CATALOG.exists() else "{}")
+    live = {w["id"]: w for w in json.loads(text or "{}").get("wallpapers", [])}
+    dirs = [resolve(i) for i in args.ids] if args.ids else wallpaper_dirs()
+    DASH_DIR.mkdir(exist_ok=True)
+    for d in dirs:
+        doc = dash_doc(d, live, glslang)
+        out = DASH_DIR / f"{d.name}.json"
+        out.write_text(json.dumps(doc, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"{doc['status']:8} {d.name} -> {out.relative_to(ROOT)}")
+    if not args.ids:
+        gone = sorted(set(live) - {d.name for d in dirs})
+        for i in gone:
+            print(f"retired  {i} (in main's catalog.json but no folder here)")
+
+
+def cmd_import(args):
+    doc = json.loads(Path(args.file).read_text(encoding="utf-8"))
+    wid = doc.get("id", "")
+    if not ID_RE.match(wid):
+        fail(f"bad wallpaper id {wid!r}")
+    files = doc.get("files") or {}
+    if SHADER not in files:
+        fail(f"the document has no {SHADER}")
+    d = WALLS / wid
+    if d.exists() and not args.force:
+        fail(f"{d.relative_to(ROOT)} already exists (use --force to overwrite)")
+    d.mkdir(parents=True, exist_ok=True)
+    for name, text in files.items():
+        if name not in (SHADER, META):
+            fail(f"unexpected file {name!r} in the document")
+        (d / name).write_text(text, encoding="utf-8")
+    missing = [i for i in doc.get("images", []) if not (d / i).is_file()]
+    print(f"wrote {d.relative_to(ROOT)}")
+    if missing:
+        print("still needed (download from the dashboard's assets): " + ", ".join(missing))
 
 
 # ------------------------------------------------------------------------------------- new
@@ -351,6 +443,13 @@ def main():
     p.set_defaults(fn=cmd_check)
     p = sub.add_parser("build", help="regenerate catalog.json")
     p.set_defaults(fn=cmd_build)
+    p = sub.add_parser("export", help="write Control Room dashboard documents to .dashboard/")
+    p.add_argument("ids", nargs="*", help="wallpaper ids (default: all)")
+    p.set_defaults(fn=cmd_export)
+    p = sub.add_parser("import", help="recreate a wallpaper folder from a dashboard document")
+    p.add_argument("file")
+    p.add_argument("--force", action="store_true")
+    p.set_defaults(fn=cmd_import)
     p = sub.add_parser("publish", help="build, commit and push")
     p.add_argument("-m", "--message")
     p.set_defaults(fn=cmd_publish)
