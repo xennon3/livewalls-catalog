@@ -32,9 +32,10 @@ wallpapers/<id>/        id = folder name: lowercase letters, digits, dashes (e.g
   the shader brings it to life. Ship it as `art.jpg` (iChannel0), plus a `maps.png` (iChannel1) with
   hand-made masks for that painting, e.g. depth for parallax and regions that move (water, cloth,
   vehicles). The masks are built offline with Pillow from polygons traced on the image.
-  `wallpapers/golden-spire` is the reference. Sample textures with v = 1 - screen v (Android uploads
-  a bitmap's top row first), cover-fit with `iChannelResolution`, and zoom in slightly so the
-  parallax never shows an edge.
+  `wallpapers/golden-spire` is the reference. The app uploads images bottom row
+  first (GL convention), so a painting's top is at v = 1: with image y running top to bottom,
+  sample `vec2(x, 1.0 - y)` (confirmed on the phone; golden-spire's `FLIP = 0.0`). Cover-fit with
+  `iChannelResolution`, and zoom in slightly so the parallax never shows an edge.
 - **`scene.frag`:** write only `void mainImage(out vec4 fragColor, in vec2 fragCoord)` and its
   helper functions. The app adds the `#version 300 es`, precision, uniforms and `main()`, so don't
   declare any of them yourself. The exact header is `HEADER` in `tools/lw.py`, which must stay
@@ -213,7 +214,7 @@ link out: "Review & merge" opens the wallpaper's PR, and "Retire" opens the Reti
   - Wallpapers with images: upload each image as an asset of the Control Room (Artifact tool,
     `url` = the link above, `asset: true`, `file_paths`), then `update` the document with
     `channelUrls`, the returned `/_blob/...` urls in the same order as `channels` in meta.json.
-    The preview binds them to iChannel0-3 the way the app does (image top row at t = 0).
+    The preview binds them to iChannel0-3 the way the app does (image bottom row at t = 0).
 - **Keep it current:** at the start of a session, compare the dashboard with `main`. If a PR was
   merged, re-export that wallpaper; it now reads `live` and carries `added`. If one was retired,
   `update` its status to `retired` and remove `prUrl`.
