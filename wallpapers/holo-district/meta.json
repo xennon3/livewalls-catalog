@@ -2,9 +2,14 @@
   "name": "Holo District",
   "author": "Prux Tech",
   "description": "A figure on a wet rooftop above a city of giant holograms: the holo screens flicker and glitch, the tower beam pulses, searchlights sweep the clouds and flying cars hover and stream past in the rain.",
-  "channels": ["art.jpg", "maps.png", "cars_atlas.png"],
+  "channels": [
+    "art.jpg",
+    "maps.png",
+    "cars_atlas.png"
+  ],
   "fps": 30,
   "scale": 0.7,
   "loop": 600,
-  "thumbTime": 5
+  "thumbTime": 5,
+  "added": "2026-10-15"
 }
