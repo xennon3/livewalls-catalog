@@ -10,8 +10,9 @@
 // On top: drifting fog, rain, lightning in the clouds, a breathing glow on the spire, twinkling
 // windows, flickering lanterns, more air traffic, clouds crossing the moon.
 
-// Texture rows run top to bottom (Android bitmap order), so image v = 1 - screen v.
-const float FLIP = 1.0;
+// The app uploads images bottom row first (GL convention), so the painting's top is at v = 1.
+// FLIP = 1.0 would read them top row first; the app needs 0.0.
+const float FLIP = 0.0;
 
 float hash11(float p) {
     p = fract(p * 0.1031);
@@ -114,7 +115,8 @@ vec4 cars(vec2 qpx, float t, inout vec3 glowAdd) {
         float trail = smoothstep(r.z * 1.6, 0.0, along) * step(r.z * 0.25, along) * exp(-side * 0.35);
         glowAdd += (vec3(0.25, 0.75, 1.0) * 0.45 + vec3(1.0, 0.3, 0.2) * 0.25) * trail * fade;
         if (local.x < 0.0 || local.y < 0.0 || local.x > r.z || local.y > r.w) continue;
-        vec4 sp = texture(iChannel2, (CAR_ATL[i] + local) / ATLAS_PX);
+        vec2 au = (CAR_ATL[i] + local) / ATLAS_PX;
+        vec4 sp = texture(iChannel2, vec2(au.x, mix(1.0 - au.y, au.y, FLIP)));
         float a = sp.a * fade;
         acc.rgb = mix(acc.rgb, sp.rgb, a);
         acc.a = max(acc.a, a);
