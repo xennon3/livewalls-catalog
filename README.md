@@ -43,7 +43,7 @@ gives you these inputs:
 ```json
 {
   "name": "Ocean Waves",
-  "author": "King Mathieu",
+  "author": "Prux Tech",
   "description": "Shown on the wallpaper's page in the app.",
   "channels": ["waves.png"],
   "fps": 30,

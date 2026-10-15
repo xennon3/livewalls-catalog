@@ -239,7 +239,7 @@ def cmd_new(args):
     d.mkdir(parents=True)
     name = args.id.replace("-", " ").title()
     (d / SHADER).write_text(TEMPLATE_SHADER.format(name=name), encoding="utf-8")
-    meta = {"name": name, "author": git_user() or "", "description": ""}
+    meta = {"name": name, "author": "Prux Tech", "description": ""}
     (d / META).write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     print(f"created {d.relative_to(ROOT)}/  ->  edit {SHADER}, then: python tools/lw.py test {args.id} --watch")
 

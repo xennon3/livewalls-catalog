@@ -37,7 +37,7 @@ wallpapers/<id>/        id = folder name: lowercase letters, digits, dashes (e.g
   pass only.
 - **`meta.json` fields:**
   - `name`, `author`, `description`: shown in the app. The existing wallpapers use
-    `"author": "King Mathieu"`.
+    `"author": "Prux Tech"`.
   - `fps`: frame-rate cap. Use 30 for slow scenes, or leave it out for 60.
   - `scale`: render resolution, 0.25-1. Use it for heavy shaders. Safe to use: the app renders into an
     offscreen buffer and upscales it (fixed 2026-10-14; earlier dev builds crashed on scale < 1).
