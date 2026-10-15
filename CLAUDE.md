@@ -15,6 +15,9 @@ pieces fit together and the rules to follow.
 - **Adding a wallpaper:** one folder in `wallpapers/`, pushed to `main`, shows up in every
   user's app. **New wallpapers never need an app update or a Play release.**
 - Anything pushed here reaches real users within minutes. Treat a push as publishing.
+- **Publishing is the owner's button, not yours.** New or changed wallpapers arrive as pull
+  requests. The owner publishes by merging one, and retires a wallpaper with the "Retire wallpaper"
+  GitHub Action. See [Publishing and retiring](#publishing-and-retiring) below.
 
 ## A wallpaper
 
@@ -61,8 +64,19 @@ python tools/lw.py check                        # validate folders and meta.json
 python tools/lw.py test ocean-waves             # push to the phone and open it in the app
 python tools/lw.py test ocean-waves --watch     # re-push on every save
 python tools/lw.py test ocean-waves --remove    # remove the test copy from the phone
+python tools/lw.py export ocean-waves           # write its Control Room document to .dashboard/
+python tools/lw.py import .dashboard/x.json     # recreate a folder from a Control Room document
 python tools/lw.py publish                      # check + build catalog.json + commit + push = LIVE
 ```
+
+The normal path for a new wallpaper is:
+
+1. Write it and run `check --glslang`.
+2. Open a pull request for it (see below).
+3. Add it to the Control Room with the PR link.
+4. Give the owner both links and stop.
+
+The owner publishes it by merging the PR.
 
 - **`test`:** copies the folder to the phone's `Android/data/com.pulsa.livewalls/files/dev/<id>/`.
   The wallpaper then appears in the app under "Testing on this phone", with id `dev:<id>`. This
@@ -83,8 +97,10 @@ python tools/lw.py publish                      # check + build catalog.json + c
 
 ## Rules
 
-1. **Ask the user before `publish` or any `git push`.** It goes live to every user right away.
-   Show them the wallpaper on the phone first.
+1. **Never push to `main` yourself, and never merge a PR.** A push to `main` goes live to every
+   user right away. Deliver wallpapers as pull requests, and the owner merges them. Every new or
+   changed wallpaper must also be in the Control Room with its PR link, so the owner can preview it
+   from their phone before deciding.
 2. **Licensing:** only publish shaders written in this session, or ones the user owns or has
    permission for. Don't copy shaders from shadertoy.com: they default to CC BY-NC-SA, which a
    commercial app can't use.
@@ -146,3 +162,48 @@ new Play release:
 The local catalog server for debug builds is described in `LiveWalls/app/src/debug/AndroidManifest.xml`:
 `python -m http.server 8765`, `adb reverse tcp:8765 tcp:8765`, then build the debug app with
 `-Plivewalls.catalogBaseUrl=http://localhost:8765/`. This is rarely needed now that `lw.py test` exists.
+
+## Publishing and retiring
+
+The owner decides what goes live with two buttons on GitHub. Neither needs Claude, and both work
+from the GitHub mobile app or the owner's own tools through the GitHub API.
+
+- **Publish = merge a pull request.**
+  - Put each new or changed wallpaper on its own branch, `wallpaper/<id>` (or the session's
+    designated branch), and open a PR to `main` titled `Publish <Name>`.
+  - On a PR, the catalog Action compiles every shader, so a red check means "don't merge".
+  - When the owner merges, the push to `main` makes the Action rebuild `catalog.json` and stamp
+    `added`, and the wallpaper is live within minutes.
+  - Keep one wallpaper per PR, and keep tool or doc changes out of wallpaper PRs.
+- **Retire = run the "Retire wallpaper" Action** (`.github/workflows/retire.yml`) with the wallpaper
+  id. It deletes the folder on `main` and rebuilds `catalog.json`.
+  - From the API: `POST /repos/xennon3/livewalls-catalog/actions/workflows/retire.yml/dispatches`
+    with `{"ref":"main","inputs":{"id":"<id>"}}`.
+  - Only accounts with write access can run it.
+  - To bring a wallpaper back, open a PR that re-adds the folder (`lw.py import` from its Control
+    Room document recreates it).
+
+## Control Room
+
+A preview dashboard for the owner's phone, where `lw.py test` isn't available:
+https://claude.ai/artifact/EEv1GKcprRAgLxaYDdyrYM. It is a claude.ai artifact. Read and write its data
+with the `ArtifactData` tool (load it with ToolSearch) and the artifact's `url`. Its buttons only
+link out: "Review & merge" opens the wallpaper's PR, and "Retire" opens the Retire Action.
+
+- **Page source:** `tools/dashboard/index.html`. After editing it, republish with the Artifact tool,
+  passing `url` (the link above) so the link stays the same, and omit `capabilities` to keep them.
+  Read the live artifact first (`action: "read"`) as the tool requires.
+- **`wallpapers/<id>`:** one document per wallpaper, made by `python tools/lw.py export <id>`
+  (writes `.dashboard/<id>.json`). Fields: name, description, fps, scale, loop, thumbTime, `status`
+  (`pending` = not on main, `changed` = edited since publishing, `live`, `retired`), `version` (the
+  catalog hash), `compiles`, and `files` (the text of `scene.frag` and `meta.json`).
+  - A new wallpaper: `ArtifactData` `set` with `file_path: .dashboard/<id>.json`.
+  - An existing one: `update` with the same file, so fields it doesn't hold survive.
+  - After opening its PR: `update` with `prUrl`.
+  - Phone measurements: `update` with `measuredFps` (number) and `measuredOn` (date).
+  - Run `export` where glslangValidator is installed (`sudo apt-get install -y glslang-tools`), or
+    `compiles` reads `unchecked`.
+  - Textures can't be previewed there yet. Say so to the owner if a wallpaper has images.
+- **Keep it current:** at the start of a session, compare the dashboard with `main`. If a PR was
+  merged, re-export that wallpaper; it now reads `live` and carries `added`. If one was retired,
+  `update` its status to `retired` and remove `prUrl`.

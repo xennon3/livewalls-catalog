@@ -1,0 +1,9 @@
+{
+  "name": "Rainglass",
+  "author": "Prux Tech",
+  "description": "Rain on a capsule-apartment window: the neon city melts into bokeh behind the fogged glass, every drop a tiny lens bringing it back into focus, as a skytrain glides past.",
+  "fps": 30,
+  "scale": 0.6,
+  "loop": 600,
+  "thumbTime": 14
+}
