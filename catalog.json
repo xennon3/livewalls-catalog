@@ -4,7 +4,7 @@
     {
       "id": "aurora",
       "name": "Aurora",
-      "author": "King Mathieu",
+      "author": "Prux Tech",
       "description": "Northern lights ripple over the mountains and reflect in a still lake.",
       "version": "3e52a16449fc",
       "added": "2026-10-14",
@@ -18,7 +18,7 @@
     {
       "id": "earth-orbit",
       "name": "Earth Orbit",
-      "author": "King Mathieu",
+      "author": "Prux Tech",
       "description": "Earth turns slowly beneath the station, with city lights on the night side and the thin blue line of the atmosphere along the horizon.",
       "version": "006bd877db78",
       "added": "2026-10-14",
@@ -34,7 +34,7 @@
     {
       "id": "hover-run",
       "name": "Hover Run",
-      "author": "King Mathieu",
+      "author": "Prux Tech",
       "description": "A rider on a hover bike skims an endless ocean at sunset, trailing neon light, spray and a foaming wake.",
       "version": "0e11e15c2f44",
       "added": "2026-10-14",
@@ -50,7 +50,7 @@
     {
       "id": "lava-lamp",
       "name": "Lava Lamp",
-      "author": "King Mathieu",
+      "author": "Prux Tech",
       "description": "Warm wax blobs that drift, merge and split.",
       "version": "743450180200",
       "added": "2026-10-14",
@@ -63,7 +63,7 @@
     {
       "id": "megacity",
       "name": "Megacity",
-      "author": "King Mathieu",
+      "author": "Prux Tech",
       "description": "A cyberpunk skyline at night: towers fading into neon haze, flickering billboards, streams of flying cars and a holographic koi drifting between the spires.",
       "version": "1234854dec5c",
       "added": "2026-10-14",
@@ -78,7 +78,7 @@
     {
       "id": "neon-alley",
       "name": "Neon Alley",
-      "author": "King Mathieu",
+      "author": "Prux Tech",
       "description": "A rain-soaked cyberpunk street at night: buzzing blade signs, sagging cables, rising steam and neon smeared across the wet ground.",
       "version": "984cce159f98",
       "added": "2026-10-14",
@@ -93,7 +93,7 @@
     {
       "id": "neon-grid",
       "name": "Neon Grid",
-      "author": "King Mathieu",
+      "author": "Prux Tech",
       "description": "A retro synthwave horizon: striped sun, twinkling stars and an endless neon grid.",
       "version": "76ea535bbd55",
       "added": "2026-10-14",
@@ -106,7 +106,7 @@
     {
       "id": "space-elevator",
       "name": "Space Elevator",
-      "author": "King Mathieu",
+      "author": "Prux Tech",
       "description": "Twilight over the ocean: a tether rises from an offshore anchor station into the stars, still catching the sun high above, as climber pods ride it to orbit.",
       "version": "ae49294d1f48",
       "added": "2026-10-14",
@@ -122,7 +122,7 @@
     {
       "id": "warp-drive",
       "name": "Warp Drive",
-      "author": "King Mathieu",
+      "author": "Prux Tech",
       "description": "The view from the cockpit in hyperspace: stars stretch into streaks, plasma swirls around the tunnel and shock rings roll past a softly glowing HUD.",
       "version": "c23443069201",
       "added": "2026-10-14",
