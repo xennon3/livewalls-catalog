@@ -16,6 +16,50 @@
       "thumbTime": 6
     },
     {
+      "id": "desert-city",
+      "name": "Desert City",
+      "author": "King Mathieu",
+      "description": "A vast dune sea at golden hour, sand blowing off the crests, mountains behind, and a far-off city shimmering in the heat.",
+      "version": "191fbf43a87b",
+      "added": "2026-10-14",
+      "files": [
+        "scene.frag"
+      ],
+      "channels": [],
+      "fps": 30,
+      "thumbTime": 12
+    },
+    {
+      "id": "earth-orbit",
+      "name": "Earth Orbit",
+      "author": "King Mathieu",
+      "description": "Earth turns slowly beneath the station, with city lights on the night side and the thin blue line of the atmosphere along the horizon.",
+      "version": "006bd877db78",
+      "added": "2026-10-14",
+      "files": [
+        "scene.frag"
+      ],
+      "channels": [],
+      "fps": 24,
+      "loop": 300,
+      "thumbTime": 40
+    },
+    {
+      "id": "hover-run",
+      "name": "Hover Run",
+      "author": "King Mathieu",
+      "description": "A rider on a hover bike skims an endless ocean at sunset, trailing neon light, spray and a foaming wake.",
+      "version": "36134a368155",
+      "added": "2026-10-14",
+      "files": [
+        "scene.frag"
+      ],
+      "channels": [],
+      "fps": 30,
+      "loop": 600,
+      "thumbTime": 5
+    },
+    {
       "id": "lava-lamp",
       "name": "Lava Lamp",
       "author": "King Mathieu",

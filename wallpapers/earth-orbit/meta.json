@@ -1,0 +1,9 @@
+{
+  "name": "Earth Orbit",
+  "author": "King Mathieu",
+  "description": "Earth turns slowly beneath the station, with city lights on the night side and the thin blue line of the atmosphere along the horizon.",
+  "fps": 24,
+  "loop": 300,
+  "thumbTime": 40,
+  "added": "2026-10-14"
+}
