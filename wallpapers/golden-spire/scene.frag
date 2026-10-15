@@ -1,12 +1,14 @@
 // Golden Spire: a lone figure on a rain-slick rooftop above a megacity at night.
 //
-// The painting is iChannel0 (art.jpg). iChannel1 (maps.png) holds hand-made masks for it:
-//   R  depth: 0 = far city, 1 = rooftop and figure (drives the parallax)
-//   G  hovering vehicles (they bob)
+// The painting is iChannel0 (art.jpg), with its small flying cars painted out. They live in
+// iChannel2 (cars_atlas.png) as cut-out sprites and fly their lanes across the city.
+// iChannel1 (maps.png) holds hand-made masks for the painting:
+//   R  depth: 0 = far city, 1 = rooftop and figure (drives the parallax, hides cars behind things)
+//   G  the big hover car (it bobs in place: it runs off the painting's edge, so it can't travel)
 //   B  wet rooftop (splashes and moving highlights)
 //   A  the coat's loose tail (it flaps in the wind)
-// Everything else is layered on top: drifting fog, rain, a breathing glow on the spire, twinkling
-// windows, flickering lanterns, extra air traffic, clouds crossing the moon.
+// On top: drifting fog, rain, lightning in the clouds, a breathing glow on the spire, twinkling
+// windows, flickering lanterns, more air traffic, clouds crossing the moon.
 
 // Texture rows run top to bottom (Android bitmap order), so image v = 1 - screen v.
 const float FLIP = 1.0;
@@ -62,6 +64,64 @@ vec4 maps(vec2 q) {
 
 float lum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
+// ---------------------------------------------------------------- flying cars
+// Positions are pixels of the 941 x 1672 painting; the atlas is 256 x 382.
+const vec2 IMG_PX = vec2(941.0, 1672.0);
+const vec2 ATLAS_PX = vec2(256.0, 382.0);
+const int NCARS = 8;
+// where each sprite was cut from: x, y, w, h (painting px)
+const vec4 CAR_SRC[NCARS] = vec4[NCARS](
+    vec4(729.0, 846.0, 192.0, 122.0), vec4(662.0, 1352.0, 102.0, 94.0),
+    vec4(54.0, 706.0, 87.0, 45.0),    vec4(112.0, 716.0, 94.0, 50.0),
+    vec4(399.0, 694.0, 107.0, 52.0),  vec4(814.0, 439.0, 117.0, 42.0),
+    vec4(624.0, 806.0, 117.0, 50.0),  vec4(249.0, 446.0, 97.0, 40.0));
+// and where it sits in the atlas: x, y (same w, h)
+const vec2 CAR_ATL[NCARS] = vec2[NCARS](
+    vec2(4.0, 4.0), vec2(4.0, 130.0), vec2(110.0, 130.0), vec2(4.0, 228.0),
+    vec2(102.0, 228.0), vec2(4.0, 284.0), vec2(125.0, 284.0), vec2(4.0, 338.0));
+// heading (painting px, y down), speed (px/s), growth along the path (perspective)
+const vec4 CAR_MOVE[NCARS] = vec4[NCARS](
+    vec4(1.0, 0.22, 70.0, 0.5),    // the sports car crossing low on the right
+    vec4(-0.30, 1.0, 45.0, -0.7),  // diving into the canyon, shrinking away
+    vec4(-1.0, 0.02, 55.0, 0.0),   // a pair heading left in the haze
+    vec4(-1.0, 0.03, 60.0, 0.0),
+    vec4(-1.0, 0.04, 80.0, 0.15),
+    vec4(1.0, 0.0, 95.0, 0.0),     // high lane traffic, quick
+    vec4(1.0, -0.02, 75.0, 0.1),
+    vec4(1.0, 0.0, 85.0, 0.0));
+
+// returns the cars over this painting pixel as rgb + coverage, and their engine glow
+vec4 cars(vec2 qpx, float t, inout vec3 glowAdd) {
+    vec4 acc = vec4(0.0);
+    // each car flies twice: on its own lane, and a smaller copy half a lap behind on a parallel lane
+    for (int n = 0; n < NCARS * 2; n++) {
+        int i = n % NCARS;
+        float inst = float(n / NCARS);
+        vec4 r = CAR_SRC[i];
+        vec4 mv = CAR_MOVE[i];
+        vec2 dir = normalize(mv.xy);
+        float span = (i == 1) ? 700.0 : 1500.0;          // px of road per lap
+        float ph = fract(t * mv.z * (1.0 - 0.12 * inst) / span + 0.5 + 0.137 * float(i) + 0.5 * inst);
+        vec2 lane = vec2(-dir.y, dir.x) * inst * (i == 1 ? 90.0 : -55.0);
+        vec2 centre = r.xy + r.zw * 0.5 + lane + dir * (ph - 0.5) * span;
+        float sc = max(0.25, (1.0 - 0.25 * inst) * (1.0 + mv.w * (ph - 0.5) * 1.6));
+        float fade = smoothstep(0.0, 0.06, ph) * smoothstep(1.0, 0.94, ph);
+        vec2 local = (qpx - centre) / sc + r.zw * 0.5;
+        // engine glow trailing behind (cyan) with a warm tail light
+        vec2 back = qpx - centre;
+        float along = -dot(back, dir) / sc;
+        float side = abs(dot(back, vec2(-dir.y, dir.x))) / sc;
+        float trail = smoothstep(r.z * 1.6, 0.0, along) * step(r.z * 0.25, along) * exp(-side * 0.35);
+        glowAdd += (vec3(0.25, 0.75, 1.0) * 0.45 + vec3(1.0, 0.3, 0.2) * 0.25) * trail * fade;
+        if (local.x < 0.0 || local.y < 0.0 || local.x > r.z || local.y > r.w) continue;
+        vec4 sp = texture(iChannel2, (CAR_ATL[i] + local) / ATLAS_PX);
+        float a = sp.a * fade;
+        acc.rgb = mix(acc.rgb, sp.rgb, a);
+        acc.a = max(acc.a, a);
+    }
+    return acc;
+}
+
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 s = fragCoord / iResolution.xy;           // screen 0..1, y up
     float t = iTime;
@@ -86,16 +146,18 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float gust = 0.6 + 0.4 * sin(t * 0.37);
     q.x += m.a * gust * (0.010 * sin(t * 2.1 + q.y * 42.0) + 0.005 * sin(t * 3.7 + q.y * 95.0));
     q.y += m.a * gust * 0.004 * sin(t * 2.7 + q.x * 30.0);
-    q.y += m.g * 0.0028 * sin(t * 1.2 + q.x * 4.0);
+    float bob = sin(t * 1.2) * 0.006 + sin(t * 2.9) * 0.0015;
+    q.y += m.g * bob;
+    q.x += m.g * 0.004 * sin(t * 0.5);
 
     vec3 col = art(q);
     float L = lum(col);
 
     // windows in the far city breathe and twinkle
     float far = 1.0 - smoothstep(0.25, 0.45, m.r);
-    vec2 cell = floor(q * ires / 3.0);
-    float tw = noise(vec2(hash12(cell) * 50.0, t * (0.3 + hash12(cell + 7.0))));
-    col *= 1.0 + far * smoothstep(0.35, 0.7, L) * (tw - 0.5) * 0.55;
+    vec2 cell = floor(q * ires / 5.0);
+    float tw = noise(vec2(hash12(cell) * 50.0, t * (0.15 + 0.3 * hash12(cell + 7.0))));
+    col *= 1.0 + far * smoothstep(0.40, 0.75, L) * (tw - 0.5) * 0.5;
 
     // soft bloom from the brightest lights
     vec3 glow = vec3(0.0);
@@ -105,14 +167,25 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         vec3 c = art(q + o);
         glow += max(c - 0.55, 0.0);
     }
-    col += glow * 0.09;
+    col += glow * 0.12;
 
     // the spire: a slow breath of gold and a pulse climbing its light shaft
     vec2 sp = q - vec2(0.728, 0.22);
     float spire = exp(-abs(sp.x) * 30.0) * smoothstep(0.45, 0.0, q.y);
-    col += vec3(1.0, 0.68, 0.30) * spire * (0.035 + 0.03 * sin(t * 0.8));
-    float climb = fract(-t * 0.09);
-    col += vec3(1.0, 0.82, 0.50) * exp(-abs(sp.x) * 160.0) * exp(-abs(q.y - climb * 0.45) * 30.0) * 0.6 * step(q.y, 0.45);
+    col += vec3(1.0, 0.68, 0.30) * spire * (0.06 + 0.06 * sin(t * 0.8));
+    float climb = fract(-t * 0.12);
+    col += vec3(1.0, 0.82, 0.50) * exp(-abs(sp.x) * 120.0) * exp(-abs(q.y - climb * 0.45) * 22.0) * 1.3 * step(q.y, 0.45);
+
+    // the cars, flying their lanes; hidden behind the rooftop, the figure and near towers
+    vec3 trailGlow = vec3(0.0);
+    vec4 cr = cars(q * IMG_PX, t, trailGlow);
+    float behind = 1.0 - smoothstep(0.42, 0.55, m.r);
+    col = mix(col, cr.rgb * 1.08, cr.a * behind);
+    col += trailGlow * behind;
+    // the big hover car's lights pulse as it idles
+    vec2 hl = q - vec2(0.30, 0.326 + bob);
+    col += vec3(1.0, 0.75, 0.40) * 0.5 * exp(-length(hl * vec2(1.0, 1.0 / imgAspect)) * 45.0) * (0.75 + 0.25 * sin(t * 3.0));
+    col += vec3(0.3, 0.8, 1.0) * 0.25 * exp(-length((q - vec2(0.17, 0.355 + bob)) * vec2(0.5, 1.0 / imgAspect)) * 40.0) * (0.7 + 0.3 * sin(t * 5.0));
 
     // moon behind passing cloud
     vec2 mq = (q - vec2(0.245, 0.062)) * vec2(1.0, 1.0 / imgAspect);
@@ -122,11 +195,17 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
     // drifting fog between the towers, tinted by the city light around it
     vec3 tint = 0.35 + glow * 0.9 + col * 0.6;
-    float f1 = fbm(vec2(q.x * 3.0 + t * 0.012, q.y * 6.0));
-    float f2 = fbm(vec2(q.x * 5.0 - t * 0.02, q.y * 9.0 + 3.0));
+    float f1 = fbm(vec2(q.x * 3.0 + t * 0.03, q.y * 6.0 - t * 0.004));
+    float f2 = fbm(vec2(q.x * 5.0 - t * 0.045, q.y * 9.0 + 3.0));
     float band = smoothstep(0.14, 0.24, q.y) * smoothstep(0.36, 0.26, q.y) + smoothstep(0.45, 0.60, q.y) * 0.9;
     float fog = smoothstep(0.42, 0.75, f1 * 0.6 + f2 * 0.5) * band * far;
-    col = mix(col, tint * vec3(0.75, 0.80, 0.88), fog * 0.35);
+    col = mix(col, tint * vec3(0.75, 0.80, 0.88), fog * 0.55);
+
+    // lightning walks through the clouds every ~23 s: two quick flickers
+    float lt = mod(t, 23.0);
+    float flash = exp(-max(lt - 0.0, 0.0) * 9.0) + 0.7 * exp(-max(lt - 0.25, 0.0) * 7.0) * step(0.25, lt);
+    float sky = smoothstep(0.42, 0.05, q.y) * far;
+    col += vec3(0.55, 0.62, 0.85) * flash * sky * (0.25 + 0.6 * cloud) * 0.8;
 
     // extra air traffic gliding along the lanes behind the rooftop
     for (int i = 0; i < 6; i++) {
@@ -160,8 +239,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         vec2 h = hash22(id);
         float ph = fract(t * (0.9 + 0.4 * h.y) + h.x);
         vec2 f = (fract(g) - 0.5 - (h - 0.5) * 0.5) * vec2(1.0, 0.45);
-        float ring = smoothstep(0.06, 0.0, abs(length(f) - ph * 0.35)) * (1.0 - ph) * step(0.5, h.y);
-        col += (0.25 + col * 1.5) * ring * wet * 0.6;
+        float ring = smoothstep(0.07, 0.0, abs(length(f) - ph * 0.35)) * (1.0 - ph) * step(0.35, h.y);
+        col += (0.30 + col * 1.8) * ring * wet * 1.0;
     }
 
     // rain over the whole frame, in two depths, catching the light it falls through
@@ -171,8 +250,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         vec2 rp = vec2(s.x * sc + s.y * 6.0, s.y * (2.5 + fk * 2.0) + t * (1.6 + fk * 1.1));
         float colId = floor(rp.x);
         rp.y += hash11(colId + fk * 31.0) * 10.0;
-        float streak = step(0.955, hash12(vec2(colId, floor(rp.y)) + fk * 5.0)) * smoothstep(0.5, 0.15, abs(fract(rp.x) - 0.5));
-        col += (vec3(0.55, 0.62, 0.72) * 0.6 + glow * 0.5) * streak * (0.10 + 0.06 * fk);
+        float streak = step(0.94, hash12(vec2(colId, floor(rp.y)) + fk * 5.0)) * smoothstep(0.5, 0.15, abs(fract(rp.x) - 0.5));
+        col += (vec3(0.55, 0.62, 0.72) * 0.7 + glow * 0.6) * streak * (0.16 + 0.10 * fk) * (1.0 + flash * 0.8);
     }
 
     // grade: lift the neon a little, deepen the corners
