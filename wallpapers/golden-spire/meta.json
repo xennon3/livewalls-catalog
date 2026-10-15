@@ -1,0 +1,10 @@
+{
+  "name": "Golden Spire",
+  "author": "Prux Tech",
+  "description": "A lone figure on a rain-slick rooftop above a megacity at night: the golden spire breathes light, fog drifts between the towers, air traffic glides past and rain ripples across the roof.",
+  "channels": ["art.jpg", "maps.png"],
+  "fps": 30,
+  "scale": 0.7,
+  "loop": 600,
+  "thumbTime": 4
+}
