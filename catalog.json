@@ -2,6 +2,22 @@
   "schema": 1,
   "wallpapers": [
     {
+      "id": "rainglass",
+      "name": "Rainglass",
+      "author": "Prux Tech",
+      "description": "Rain on a capsule-apartment window: the neon city melts into bokeh behind the fogged glass, every drop a tiny lens bringing it back into focus, as a skytrain glides past.",
+      "version": "97ae036d892e",
+      "added": "2026-10-15",
+      "files": [
+        "scene.frag"
+      ],
+      "channels": [],
+      "fps": 30,
+      "scale": 0.6,
+      "loop": 600,
+      "thumbTime": 14
+    },
+    {
       "id": "aurora",
       "name": "Aurora",
       "author": "Prux Tech",
