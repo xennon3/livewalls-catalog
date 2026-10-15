@@ -1,0 +1,10 @@
+{
+  "name": "Space Elevator",
+  "author": "King Mathieu",
+  "description": "Twilight over the ocean: a tether rises from an offshore anchor station into the stars, still catching the sun high above, as climber pods ride it to orbit.",
+  "fps": 30,
+  "scale": 0.85,
+  "loop": 1200,
+  "thumbTime": 20,
+  "added": "2026-10-14"
+}

@@ -92,46 +92,86 @@ float sdCapsule(vec2 p, vec2 a, vec2 b, float r) {
     return length(pa - ba * h) - r;
 }
 
-// Signed distance to the bike and rider in metres. The bike faces +x; y = 0 is the hover line.
-float bikeSdf(vec2 q) {
-    float d = sdCapsule(q, vec2(-1.00, 0.30), vec2(0.90, 0.40), 0.18);       // hull
-    d = min(d, sdCapsule(q, vec2(-0.10, 0.50), vec2(0.60, 0.58), 0.16));     // tank hump
-    d = min(d, sdCapsule(q, vec2(0.70, 0.55), vec2(1.45, 0.28), 0.12));      // front fairing
-    d = min(d, sdCapsule(q, vec2(1.45, 0.28), vec2(1.75, 0.20), 0.05));      // nose
-    d = min(d, sdCapsule(q, vec2(-1.00, 0.38), vec2(-1.50, 0.62), 0.08));    // upswept tail
-    d = min(d, sdCapsule(q, vec2(-0.90, 0.12), vec2(1.00, 0.14), 0.09));     // thruster keel
-    d = min(d, sdCapsule(q, vec2(0.95, 0.66), vec2(1.12, 0.86), 0.03));      // windscreen
-    // Rider, tucked low over the tank.
-    d = min(d, sdCapsule(q, vec2(-0.45, 0.66), vec2(0.25, 0.98), 0.17));     // torso
-    d = min(d, sdCapsule(q, vec2(-0.20, 0.88), vec2(0.15, 1.00), 0.15));     // shoulders
-    d = min(d, length(q - vec2(0.47, 1.07)) - 0.15);                         // helmet
-    d = min(d, sdCapsule(q, vec2(0.22, 0.93), vec2(0.82, 0.72), 0.07));      // arm
-    d = min(d, sdCapsule(q, vec2(-0.40, 0.64), vec2(0.15, 0.56), 0.12));     // thigh
-    d = min(d, sdCapsule(q, vec2(0.15, 0.56), vec2(-0.15, 0.33), 0.085));    // shin
+// Tapered capsule: radius ra at a, rb at b.
+float sdTaper(vec2 p, vec2 a, vec2 b, float ra, float rb) {
+    p -= a;
+    b -= a;
+    float h = dot(b, b);
+    vec2 q = vec2(dot(p, vec2(b.y, -b.x)), dot(p, b)) / h;
+    q.x = abs(q.x);
+    float k0 = ra - rb;
+    vec2 c = vec2(sqrt(h - k0 * k0), k0);
+    float k = c.x * q.y - c.y * q.x;
+    float m = dot(c, q);
+    float n = dot(q, q);
+    if (k < 0.0) return sqrt(h * n) - ra;
+    if (k > c.x) return sqrt(h * (n + 1.0 - 2.0 * q.y)) - rb;
+    return m - ra;
+}
+
+float smin(float a, float b, float k) {
+    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    return mix(b, a, h) - k * h * (1.0 - h);
+}
+
+// The hover bike: a single smooth teardrop hull, raised tail fin and a ring thruster.
+float hullSdf(vec2 q) {
+    float d = sdTaper(q, vec2(-1.20, 0.40), vec2(1.60, 0.22), 0.21, 0.05);          // main hull
+    d = smin(d, sdTaper(q, vec2(-0.85, 0.22), vec2(1.10, 0.17), 0.15, 0.06), 0.12); // belly
+    d = smin(d, sdTaper(q, vec2(-0.95, 0.50), vec2(-1.55, 0.78), 0.10, 0.025), 0.08); // tail fin
+    d = smin(d, sdTaper(q, vec2(0.25, 0.46), vec2(1.00, 0.34), 0.10, 0.04), 0.10);  // nose cowl
+    // Ring thruster at the back: an open ellipse.
+    vec2 rq = (q - vec2(-1.32, 0.34)) / vec2(0.10, 0.24);
+    float ring = abs(length(rq) - 1.0) * 0.10 - 0.018;
+    d = min(d, ring);
     return d;
 }
 
-// Neon trails from the tail, replaying the bike's bob, plus the bike's own lights.
+// The rider: a slim armoured figure lying flat along the bike.
+float riderSdf(vec2 q) {
+    float d = sdTaper(q, vec2(-0.55, 0.72), vec2(0.22, 0.86), 0.14, 0.16);          // torso
+    d = smin(d, sdTaper(q, vec2(-0.30, 0.86), vec2(0.12, 0.95), 0.07, 0.05), 0.06); // back armour
+    // Helmet: an elongated aero shell, swept back.
+    vec2 hq = q - vec2(0.50, 0.92);
+    hq = mat2(0.97, 0.24, -0.24, 0.97) * hq;
+    float helmet = sdTaper(hq, vec2(-0.14, 0.0), vec2(0.10, 0.0), 0.10, 0.13);
+    d = smin(d, helmet, 0.05);
+    d = smin(d, sdTaper(q, vec2(0.20, 0.82), vec2(0.55, 0.64), 0.065, 0.05), 0.04); // upper arm
+    d = smin(d, sdTaper(q, vec2(0.55, 0.64), vec2(0.86, 0.58), 0.05, 0.04), 0.03);  // forearm
+    d = smin(d, sdTaper(q, vec2(-0.55, 0.70), vec2(-0.12, 0.52), 0.11, 0.085), 0.05); // thigh
+    d = smin(d, sdTaper(q, vec2(-0.12, 0.52), vec2(-0.58, 0.40), 0.08, 0.05), 0.03); // shin
+    return d;
+}
+
+float bikeSdf(vec2 q) {
+    return smin(hullSdf(q), riderSdf(q), 0.04);
+}
+
+// Neon trails from the tail fin and the ring thruster, replaying the bike's bob.
 vec3 lights(vec2 q, float t) {
     vec3 col = vec3(0.0);
-    float behind = -1.54 - q.x;
+    float behind = -1.45 - q.x;
     if (behind > 0.0) {
         float b0 = bob(t - behind / SPEED) - bob(t);
         float fade = exp(-behind / 10.0) * smoothstep(0.0, 0.3, behind);
         float w = 0.03 + behind * 0.004;
-        float y1 = 0.62 + b0;
-        float y2 = 0.06 + b0 * 1.3;
-        col += vec3(1.0, 0.18, 0.70) * (exp(-pow((q.y - y1) / w, 2.0)) * 1.6 + exp(-abs(q.y - y1) / (w * 5.0)) * 0.25) * fade;
-        col += vec3(0.15, 0.85, 1.0) * (exp(-pow((q.y - y2) / w, 2.0)) * 1.3 + exp(-abs(q.y - y2) / (w * 5.0)) * 0.22) * fade;
+        float y1 = 0.78 + b0;
+        float y2 = 0.34 + b0 * 1.3;
+        col += vec3(1.0, 0.18, 0.70) * (exp(-pow((q.y - y1) / (w * 0.7), 2.0)) * 1.5 + exp(-abs(q.y - y1) / (w * 5.0)) * 0.22) * fade;
+        col += vec3(0.15, 0.85, 1.0) * (exp(-pow((q.y - y2) / (w * 1.6), 2.0)) * 1.2 + exp(-abs(q.y - y2) / (w * 6.0)) * 0.25) * fade;
     }
-    vec2 tl = q - vec2(-1.54, 0.62);
-    col += vec3(1.0, 0.25, 0.70) * 0.010 / (dot(tl, tl) + 0.003);
-    vec2 hl = q - vec2(1.78, 0.20);
-    col += vec3(0.40, 0.95, 1.0) * 0.008 / (dot(hl, hl) + 0.003);
-    // Thruster glow under the pods.
-    vec2 tq = (q - vec2(0.05, 0.02)) / vec2(1.1, 0.07);
-    col += vec3(0.20, 0.80, 1.0) * exp(-dot(tq, tq)) * 1.3;
-    vec2 tg = (q - vec2(0.05, -0.08)) / vec2(1.4, 0.22);
+    vec2 tl = q - vec2(-1.55, 0.78);
+    col += vec3(1.0, 0.25, 0.70) * 0.006 / (dot(tl, tl) + 0.002);
+    vec2 hl = q - vec2(1.62, 0.22);
+    col += vec3(0.40, 0.95, 1.0) * 0.006 / (dot(hl, hl) + 0.002);
+    // Ring thruster: a hot glowing ellipse with a plasma core.
+    vec2 rq = (q - vec2(-1.32, 0.34)) / vec2(0.10, 0.24);
+    float rr = length(rq);
+    col += vec3(0.30, 0.90, 1.0) * (exp(-pow((rr - 1.0) / 0.18, 2.0)) * 1.4 + exp(-rr * 1.6) * 0.6);
+    // Hover field: a thin light blade along the belly and its glow on the spray below.
+    vec2 tq = (q - vec2(0.10, 0.06)) / vec2(0.95, 0.025);
+    col += vec3(0.30, 0.90, 1.0) * exp(-dot(tq, tq)) * 1.6;
+    vec2 tg = (q - vec2(0.10, -0.06)) / vec2(1.3, 0.18);
     col += vec3(0.20, 0.70, 1.0) * exp(-dot(tg, tg)) * 0.35;
     return col;
 }
@@ -143,7 +183,7 @@ vec3 lightReflections(vec2 q, float waterY, float t, vec2 world) {
     float shimmer = 0.35 + 0.9 * smoothstep(0.35, 0.75, noise(vec2(world.x * 2.0, below * 9.0 - t * 2.0)));
     float drop = exp(-below / 0.7) * smoothstep(0.0, 0.35, below) * shimmer;
     vec3 col = vec3(0.0);
-    float behind = -1.54 - q.x;
+    float behind = -1.45 - q.x;
     if (behind > 0.0) {
         float fade = exp(-behind / 10.0) * smoothstep(0.0, 2.0, behind);
         col += (vec3(1.0, 0.18, 0.70) * 0.45 + vec3(0.15, 0.85, 1.0) * 0.55) * fade * 0.9;
@@ -221,23 +261,39 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         col += vec3(1.0, 0.8, 0.75) * smoothstep(0.10, 0.0, dd) * step(0.90, hash12(id)) * shape * 1.2;
     }
 
-    // The bike: a backlit silhouette with a hot rim from the sun, then its lights and trails on top.
+    // The bike: a backlit silhouette with a hot rim from the sun, neon seams and a lit visor.
     float aa = BIKE.z * 1.5 / iResolution.y;
-    float d = bikeSdf(q);
+    // Only pixels near the bike pay for its shapes.
+    bool nearBike = q.x > -1.9 && q.x < 2.0 && q.y > -0.3 && q.y < 1.4;
+    float d = nearBike ? bikeSdf(q) : 1.0;
     float body = smoothstep(aa, -aa, d);
     float rim = 0.0;
     if (abs(d) < 0.12) {
         vec2 e = vec2(0.01, 0.0);
         vec2 gr = vec2(bikeSdf(q + e.xy) - bikeSdf(q - e.xy), bikeSdf(q + e.yx) - bikeSdf(q - e.yx));
-        rim = body * smoothstep(-0.05, -0.008, d) * smoothstep(-0.1, 0.7, normalize(gr).y);
+        rim = body * smoothstep(-0.04, -0.006, d) * smoothstep(-0.1, 0.7, normalize(gr).y);
     }
-    vec3 bodyCol = vec3(0.03, 0.02, 0.06) + vec3(0.07, 0.03, 0.10) * clamp(q.y, 0.0, 1.2);
+    float hull = nearBike ? hullSdf(q) : 1.0;
+    float rider = nearBike ? riderSdf(q) : 1.0;
+    // Gloss: hull panels are a touch lighter on top, like polished carbon catching the sky.
+    vec3 bodyCol = vec3(0.025, 0.02, 0.05) + vec3(0.10, 0.04, 0.12) * smoothstep(0.1, 0.55, q.y) * step(hull, rider);
     bodyCol += vec3(1.0, 0.55, 0.35) * rim;
-    float stripe = smoothstep(0.03, 0.0, abs(sdCapsule(q, vec2(-0.95, 0.30), vec2(1.40, 0.36), 0.0))) * step(d, -0.01);
-    bodyCol += vec3(0.20, 0.85, 1.0) * stripe;
-    float visor = smoothstep(0.03, 0.0, sdCapsule(q, vec2(0.50, 1.09), vec2(0.60, 1.06), 0.035));
-    bodyCol += vec3(1.0, 0.30, 0.75) * visor * 0.9;
+    // Neon seam that follows the hull's contour, inset from the edge.
+    float seam = smoothstep(0.012, 0.0, abs(hull + 0.05)) * step(hull, rider) * smoothstep(0.15, 0.3, q.y);
+    bodyCol += vec3(0.20, 0.85, 1.0) * seam * 1.3;
+    // Panel line across the hull.
+    bodyCol += vec3(1.0, 0.25, 0.70) * smoothstep(0.012, 0.0, abs(q.x + 0.35 - (q.y - 0.3) * 0.6)) * step(hull, -0.02) * step(hull, rider) * 0.8;
+    // Suit light lines: along the spine and down the arm and leg.
+    float suit = sdCapsule(q, vec2(-0.25, 0.88), vec2(0.08, 0.96), 0.0);
+    suit = min(suit, sdCapsule(q, vec2(0.32, 0.77), vec2(0.52, 0.66), 0.0));
+    suit = min(suit, sdCapsule(q, vec2(-0.40, 0.62), vec2(-0.22, 0.55), 0.0));
+    bodyCol += vec3(1.0, 0.25, 0.75) * smoothstep(0.014, 0.0, suit) * step(rider, -0.015) * 1.2;
+    // Visor: a bright strip wrapping the front of the helmet.
+    vec2 hq = mat2(0.97, 0.24, -0.24, 0.97) * (q - vec2(0.50, 0.92));
+    float visor = smoothstep(0.012, 0.0, abs(hq.y - 0.01) - 0.03) * smoothstep(0.02, 0.08, hq.x) * step(rider, -0.01);
+    bodyCol += mix(vec3(0.3, 0.9, 1.0), vec3(1.0), 0.3) * visor * 1.4;
     col = mix(col, bodyCol, body);
+    col += vec3(0.4, 0.9, 1.0) * exp(-length(hq - vec2(0.12, 0.01)) / 0.08) * 0.15 * (1.0 - body);
     col += vec3(1.0, 0.45, 0.35) * exp(-max(d, 0.0) / 0.05) * 0.08 * (1.0 - body);
     col += lights(q, t);
 

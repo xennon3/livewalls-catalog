@@ -16,20 +16,6 @@
       "thumbTime": 6
     },
     {
-      "id": "desert-city",
-      "name": "Desert City",
-      "author": "King Mathieu",
-      "description": "A vast dune sea at golden hour, sand blowing off the crests, mountains behind, and a far-off city shimmering in the heat.",
-      "version": "191fbf43a87b",
-      "added": "2026-10-14",
-      "files": [
-        "scene.frag"
-      ],
-      "channels": [],
-      "fps": 30,
-      "thumbTime": 12
-    },
-    {
       "id": "earth-orbit",
       "name": "Earth Orbit",
       "author": "King Mathieu",
@@ -41,6 +27,7 @@
       ],
       "channels": [],
       "fps": 24,
+      "scale": 0.75,
       "loop": 300,
       "thumbTime": 40
     },
@@ -49,13 +36,14 @@
       "name": "Hover Run",
       "author": "King Mathieu",
       "description": "A rider on a hover bike skims an endless ocean at sunset, trailing neon light, spray and a foaming wake.",
-      "version": "36134a368155",
+      "version": "0e11e15c2f44",
       "added": "2026-10-14",
       "files": [
         "scene.frag"
       ],
       "channels": [],
       "fps": 30,
+      "scale": 0.75,
       "loop": 600,
       "thumbTime": 5
     },
@@ -73,6 +61,36 @@
       "thumbTime": 8
     },
     {
+      "id": "megacity",
+      "name": "Megacity",
+      "author": "King Mathieu",
+      "description": "A cyberpunk skyline at night: towers fading into neon haze, flickering billboards, streams of flying cars and a holographic koi drifting between the spires.",
+      "version": "1234854dec5c",
+      "added": "2026-10-14",
+      "files": [
+        "scene.frag"
+      ],
+      "channels": [],
+      "fps": 20,
+      "scale": 0.5,
+      "thumbTime": 9
+    },
+    {
+      "id": "neon-alley",
+      "name": "Neon Alley",
+      "author": "King Mathieu",
+      "description": "A rain-soaked cyberpunk street at night: buzzing blade signs, sagging cables, rising steam and neon smeared across the wet ground.",
+      "version": "984cce159f98",
+      "added": "2026-10-14",
+      "files": [
+        "scene.frag"
+      ],
+      "channels": [],
+      "fps": 24,
+      "scale": 0.45,
+      "thumbTime": 7
+    },
+    {
       "id": "neon-grid",
       "name": "Neon Grid",
       "author": "King Mathieu",
@@ -84,6 +102,38 @@
       ],
       "channels": [],
       "thumbTime": 3
+    },
+    {
+      "id": "space-elevator",
+      "name": "Space Elevator",
+      "author": "King Mathieu",
+      "description": "Twilight over the ocean: a tether rises from an offshore anchor station into the stars, still catching the sun high above, as climber pods ride it to orbit.",
+      "version": "ae49294d1f48",
+      "added": "2026-10-14",
+      "files": [
+        "scene.frag"
+      ],
+      "channels": [],
+      "fps": 30,
+      "scale": 0.85,
+      "loop": 1200,
+      "thumbTime": 20
+    },
+    {
+      "id": "warp-drive",
+      "name": "Warp Drive",
+      "author": "King Mathieu",
+      "description": "The view from the cockpit in hyperspace: stars stretch into streaks, plasma swirls around the tunnel and shock rings roll past a softly glowing HUD.",
+      "version": "c23443069201",
+      "added": "2026-10-14",
+      "files": [
+        "scene.frag"
+      ],
+      "channels": [],
+      "fps": 30,
+      "scale": 0.75,
+      "loop": 600,
+      "thumbTime": 6
     }
   ]
 }
