@@ -1,0 +1,9 @@
+{
+  "name": "Solar Bay",
+  "author": "Prux Tech",
+  "description": "A bright tropical megacity on a turquoise bay: glass spires with holo billboards, a skybridge to the green headland, idling boats, a passing flying car and palm fronds swaying in the sea breeze.",
+  "fps": 30,
+  "scale": 0.6,
+  "loop": 600,
+  "thumbTime": 8
+}
