@@ -1,0 +1,10 @@
+{
+  "name": "Maple Moon",
+  "author": "Prux Tech",
+  "description": "A zen garden above a neon city under a moon wrapped in a space station: maple leaves drift down, a bullet train glides past, lights circle the station and light pulses through the raked sand.",
+  "channels": ["art.jpg", "maps.png"],
+  "fps": 30,
+  "scale": 0.7,
+  "loop": 600,
+  "thumbTime": 6
+}
