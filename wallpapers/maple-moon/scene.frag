@@ -108,6 +108,22 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     }
     qp = q * IMG_PX;
 
+    // the sky's clouds churn slowly (not the moon, its station or the city)
+    float moonR = length(qp - vec2(608.0, 316.0));
+    float cloudy = smoothstep(0.47, 0.42, q.y) * smoothstep(265.0, 305.0, moonR) * step(qp.x, 900.0) * far * (1.0 - m.g);
+    q.x += cloudy * (fbm(vec2(q.x * 3.0 - t * 0.04, q.y * 7.0)) - 0.5) * 0.012;
+    q.y += cloudy * (fbm(vec2(q.x * 3.0 + 5.0, q.y * 7.0 - t * 0.03)) - 0.5) * 0.006;
+
+    // the moon's outer orbital rings swing slowly about the moon
+    float ring = smoothstep(246.0, 256.0, moonR) * smoothstep(305.0, 292.0, moonR) * smoothstep(560.0, 470.0, qp.y);
+    if (ring > 0.0) {
+        float ra = 0.11 * sin(t * 0.13);
+        vec2 rc = qp - vec2(608.0, 316.0);
+        rc = mat2(cos(ra), -sin(ra), sin(ra), cos(ra)) * rc;
+        q = mix(q, (rc + vec2(608.0, 316.0)) / IMG_PX, ring);
+    }
+    qp = q * IMG_PX;
+
     vec3 col = art(q);
 
     // the train glides along the line: its pixels stream towards us; the loop's seam hides
@@ -125,21 +141,22 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float L = lum(col);
 
     // windows in the city and stars in the sky twinkle
-    float moonD = length(qp - vec2(575.0, 318.0));
+    float moonD = length(qp - vec2(608.0, 316.0));
     vec2 cell = floor(qp / 4.0);
     float tw = noise(vec2(hash12(cell) * 50.0, t * (0.2 + 0.5 * hash12(cell + 7.0))));
     float sky = smoothstep(0.47, 0.40, q.y);
-    float notMoon = smoothstep(215.0, 235.0, moonD) * step(qp.x, 845.0 + 1000.0 * step(560.0, qp.y));
+    float notMoon = smoothstep(238.0, 256.0, moonD) * step(qp.x, 845.0 + 1000.0 * step(560.0, qp.y));
     col *= 1.0 + far * notMoon * smoothstep(0.35, 0.75, L) * (tw - 0.5) * mix(0.45, 1.1, sky);
 
     // the moon: a soft breathing glow, and lights racing round the station's rings
-    vec2 mc = qp - vec2(575.0, 318.0);
+    vec2 mc = qp - vec2(608.0, 316.0);
     float mr = length(mc);
-    col += vec3(0.75, 0.82, 1.0) * 0.10 * exp(-max(mr - 210.0, 0.0) * 0.012) * (0.8 + 0.2 * sin(t * 0.5)) * step(195.0, mr);
+    col += vec3(0.75, 0.82, 1.0) * 0.10 * exp(-max(mr - 232.0, 0.0) * 0.012) * (0.8 + 0.2 * sin(t * 0.5)) * step(222.0, mr);
     float ma = atan(mc.y, mc.x);
-    float station = step(qp.x, 830.0) * step(600.0, qp.x + 0.25 * mc.y) * step(mr, 225.0);
-    float race = pow(max(cos(ma * 3.0 - t * 1.2), 0.0), 30.0) + pow(max(cos(ma * 2.0 + t * 0.7), 0.0), 40.0);
-    col += vec3(1.0, 0.85, 0.6) * station * smoothstep(0.45, 0.8, L) * race * 1.2;
+    float station = step(qp.x, 830.0) * step(600.0, qp.x + 0.25 * mc.y) * step(mr, 245.0);
+    float race = pow(max(cos(ma * 3.0 - t * 1.2), 0.0), 24.0) + pow(max(cos(ma * 2.0 + t * 0.7), 0.0), 30.0);
+    float warm = smoothstep(0.04, 0.14, col.r - col.b);       // the station's gold lights, not the moon's surface
+    col += vec3(1.0, 0.85, 0.6) * station * warm * smoothstep(0.35, 0.8, L) * race * 1.8;
 
     // satellites' beacons blink
     for (int i = 0; i < 6; i++) {
@@ -163,7 +180,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float sand = smoothstep(0.70, 0.73, q.y) * smoothstep(0.6, 0.75, m.r) * (1.0 - m.b);
     vec2 gd = (q - vec2(0.42, 0.88)) * vec2(1.0, 1.0 / imgAspect);
     float wave = 0.5 + 0.5 * sin(length(gd) * 28.0 - t * 1.4);
-    col *= 1.0 + sand * smoothstep(0.45, 0.8, L) * (wave - 0.35) * 0.55;
+    col *= 1.0 + sand * smoothstep(0.45, 0.8, L) * (wave - 0.3) * 0.85;
 
     // moonlight glitters on the water
     col += vec3(0.8, 0.9, 1.0) * m.b * pow(noise(qp * vec2(0.5, 1.6) + t * 1.3), 12.0) * 1.4;
@@ -179,21 +196,45 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     }
 
     // maple leaves drifting down from the tree and across the garden
-    for (int i = 0; i < 18; i++) {
+    float gustX = smoothstep(0.6, 1.0, noise(vec2(t * 0.15, 2.0))) * 260.0;
+    for (int i = 0; i < 36; i++) {
         float fi = float(i);
-        float life = 9.0 + 7.0 * hash11(fi * 3.1);
+        bool near = i >= 30;                              // a few big leaves right in front of us
+        float life = near ? 6.0 + 3.0 * hash11(fi * 3.1) : 9.0 + 7.0 * hash11(fi * 3.1);
         float ph = fract(t / life + hash11(fi * 7.7));
         float cyc = floor(t / life + hash11(fi * 7.7));
         float sx = 30.0 + 470.0 * hash11(fi * 1.9 + cyc * 0.37);
         float sy = 480.0 + 380.0 * hash11(fi * 5.3 + cyc * 0.61);
-        vec2 c = vec2(sx + ph * (180.0 + 160.0 * hash11(fi)) + 30.0 * sin(ph * 9.0 + fi),
-                      sy + ph * (1700.0 - sy) * (0.7 + 0.3 * hash11(fi * 2.0)));
-        float size = 5.0 + 6.0 * hash11(fi * 9.1) + 4.0 * smoothstep(1000.0, 1600.0, c.y);
+        if (near) { sx = -60.0 + 700.0 * hash11(fi * 1.9 + cyc * 0.37); sy = 200.0 + 500.0 * hash11(fi * 5.3 + cyc * 0.61); }
+        vec2 c = vec2(sx + ph * (180.0 + 160.0 * hash11(fi)) + 30.0 * sin(ph * 9.0 + fi) + gustX * ph,
+                      sy + ph * (1750.0 - sy) * (0.7 + 0.3 * hash11(fi * 2.0)));
+        float size = near ? 22.0 + 14.0 * hash11(fi * 9.1) : 5.0 + 6.0 * hash11(fi * 9.1) + 4.0 * smoothstep(1000.0, 1600.0, c.y);
         float spin = t * (1.5 + hash11(fi * 4.4)) + fi;
         float cov = leaf(qp, c, size, spin, cos(t * 2.3 + fi * 1.7)) * smoothstep(0.0, 0.05, ph) * smoothstep(1.0, 0.9, ph);
         vec3 lc = mix(vec3(0.55, 0.03, 0.05), vec3(1.0, 0.18, 0.12), 0.5 + 0.5 * cos(t * 2.3 + fi * 1.7));
+        if (near) { lc *= 0.75; cov *= 0.85; }            // out of focus, a little darker
         col = mix(col, lc, cov * 0.95);
     }
+
+    // fireflies wander the garden and under the maple
+    for (int i = 0; i < 14; i++) {
+        float fi = float(i);
+        vec2 home = vec2(40.0 + 600.0 * hash11(fi * 2.7), 760.0 + 650.0 * hash11(fi * 5.9));
+        vec2 fp = home + vec2(sin(t * (0.3 + 0.2 * hash11(fi)) + fi) * 45.0, cos(t * (0.25 + 0.2 * hash11(fi + 3.0)) + fi * 2.0) * 30.0);
+        float pulse = pow(0.5 + 0.5 * sin(t * (1.2 + hash11(fi * 8.0)) + fi * 3.0), 3.0);
+        float d = length(qp - fp);
+        col += vec3(1.0, 0.85, 0.45) * pulse * (exp(-d * 0.6) * 1.4 + exp(-d * 0.12) * 0.18);
+    }
+
+    // now and then a shooting star streaks across the sky
+    float st = mod(t, 13.0);
+    vec2 s0 = vec2(80.0 + 300.0 * hash11(floor(t / 13.0)), 40.0 + 120.0 * hash11(floor(t / 13.0) + 3.0));
+    vec2 sh = s0 + vec2(260.0, 110.0) * clamp(st / 0.9, 0.0, 1.0);
+    vec2 sd = qp - sh;
+    vec2 dir = normalize(vec2(260.0, 110.0));
+    float along = -dot(sd, dir);
+    float trail = exp(-abs(dot(sd, vec2(-dir.y, dir.x))) * 1.2) * smoothstep(120.0, 0.0, along) * step(0.0, along);
+    col += vec3(0.85, 0.9, 1.0) * trail * step(st, 0.9) * (1.0 - st / 0.9) * 1.4 * smoothstep(258.0, 268.0, length(qp - vec2(608.0, 316.0)));
 
     // a soft bloom on the brightest lights
     vec3 glow = vec3(0.0);
